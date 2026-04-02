@@ -1,0 +1,9 @@
+gait_data.csv
+
+*.pkl
+
+__pycache__/
+*.pyc
+
+*.png
+*.csv
