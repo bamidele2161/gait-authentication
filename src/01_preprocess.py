@@ -1,4 +1,3 @@
-
 import pandas as pd
 import numpy as np
 import os
@@ -6,96 +5,81 @@ import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.utils import (
-    list_raw_files, parse_participant_info,
-    PROCESSED_DIR, ensure_dirs
+    PROCESSED_DIR, ensure_dirs, SENSOR_COLS, SAMPLE_RATE
 )
 
-
-def load_sensor_logger_csv(filepath):
-  
+def load_and_preprocess_data(filepath):
+    print(f"Loading dataset from: {filepath}")
     df = pd.read_csv(filepath)
+    print(f"Columns found: {list(df.columns)}")
 
-  
-    print(f"  Columns found: {list(df.columns)}")
+    # Accommodate 'User' or 'user' capitalization
+    user_col = None
+    if 'User' in df.columns:
+        user_col = 'User'
+    elif 'user' in df.columns:
+        user_col = 'user'
+    
+    if not user_col:
+        raise ValueError("Could not find a 'user' or 'User' column.")
 
-   
-    col_map = {}
-
-    for col in df.columns:
-        c = col.lower().strip()
-        if c in ['seconds_elapsed', 'time(s)', 'time_s', 'elapsed']:
-            col_map[col] = 'time'
-        elif c in ['x', 'x (m/s^2)', 'accel_x', 'accelerometerx', 'x-axis']:
-            col_map[col] = 'x'
-        elif c in ['y', 'y (m/s^2)', 'accel_y', 'accelerometery', 'y-axis']:
-            col_map[col] = 'y'
-        elif c in ['z', 'z (m/s^2)', 'accel_z', 'accelerometerz', 'z-axis']:
-            col_map[col] = 'z'
-
-    df = df.rename(columns=col_map)
-
-
-    required = ['time', 'x', 'y', 'z']
-    missing = [c for c in required if c not in df.columns]
+    # Check for required sensor columns
+    missing = [c for c in SENSOR_COLS if c not in df.columns]
     if missing:
-        raise ValueError(
-            f"Could not find columns {missing} in {filepath}.\n"
-            f"Available columns: {list(df.columns)}\n"
-        )
+        raise ValueError(f"Missing expected sensor columns: {missing}\nAvailable columns: {list(df.columns)}")
 
-    df = df[['time', 'x', 'y', 'z']].copy()
-    return df
+    users = df[user_col].unique()
+    print(f"Found {len(users)} users.")
 
+    for u in users:
+        print(f"\nProcessing User: {u}")
+        user_df = df[df[user_col] == u].copy()
+        
+        user_df = clean_signal(user_df)
+        
+        # Standardize the user column name to lowercase 'user' in output for consistency
+        user_df['user'] = u
+        if user_col != 'user':
+            user_df = user_df.drop(columns=[user_col], errors='ignore')
+        
+        out_name = f"user_{u}_clean.csv"
+        out_path = os.path.join(PROCESSED_DIR, out_name)
+        
+        # We only really need the time, user and the sensor columns. Let's filter to be sure.
+        out_cols = ['time', 'user'] + SENSOR_COLS
+        user_df[out_cols].to_csv(out_path, index=False)
+        print(f"  Saved: {out_path}")
 
 def clean_signal(df):
-  
-    df = df.dropna()
-    df = df.sort_values('time').reset_index(drop=True)
-    df['time'] = df['time'] - df['time'].iloc[0]   
-    df[['x', 'y', 'z']] = df[['x', 'y', 'z']].astype(float)
+    df = df.dropna(subset=SENSOR_COLS)
+    
+    # The dataset might not contain a 'time' column, and it's collected at 100Hz continuously. 
+    # Calculate synthetic time array.
+    df = df.reset_index(drop=True)
+    df['time'] = np.arange(len(df)) / float(SAMPLE_RATE)
+
+    df[SENSOR_COLS] = df[SENSOR_COLS].astype(float)
 
     print(f"  Duration: {df['time'].iloc[-1]:.1f} seconds")
     print(f"  Total samples: {len(df)}")
 
     return df
 
-
 def preprocess_all():
     ensure_dirs()
-    files = list_raw_files()
+    # Since gait_data.csv is at the root of the project, we construct the absolute path
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    data_path = os.path.join(base_dir, "gait_data.csv")
 
-    if len(files) == 0:
-        print("\n No CSV files found in data/raw/")
-        print("   Drop your Sensor Logger CSV files there first.")
-        print("   Name them like: participant_01_session1.csv")
+    if not os.path.exists(data_path):
+        print(f"\n Error: {data_path} not found.")
         return
 
-    for filepath in files:
-        filename = os.path.basename(filepath)
-        print(f"\nProcessing: {filename}")
-
-        try:
-            participant_id, session = parse_participant_info(filepath)
-            print(f"  Participant: {participant_id} | Session: {session}")
-
-            df = load_sensor_logger_csv(filepath)
-            df = clean_signal(df)
-
-          
-            df['participant_id'] = participant_id
-            df['session'] = session
-
-          
-            out_name = f"participant_{participant_id}_session{session}_clean.csv"
-            out_path = os.path.join(PROCESSED_DIR, out_name)
-            df.to_csv(out_path, index=False)
-            print(f" Saved: {out_path}")
-
-        except Exception as e:
-            print(f" Error with {filename}: {e}")
-
-    print("\n Preprocessing complete!")
-
+    try:
+        load_and_preprocess_data(data_path)
+        print("\n Preprocessing complete!")
+    except Exception as e:
+        print(f" Error during preprocessing: {e}")
 
 if __name__ == "__main__":
     preprocess_all()
