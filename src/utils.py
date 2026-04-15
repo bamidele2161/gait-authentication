@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 
 
-SAMPLE_RATE     = 100        
+SAMPLE_RATE     = 50        
 WINDOW_SECS     = 2         
 WINDOW_SAMPLES  = SAMPLE_RATE * WINDOW_SECS  
 OVERLAP         = 0.5       

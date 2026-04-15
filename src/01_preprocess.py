@@ -13,12 +13,7 @@ def load_and_preprocess_data(filepath):
     df = pd.read_csv(filepath)
     print(f"Columns found: {list(df.columns)}")
 
-    # Accommodate 'User' or 'user' capitalization
-    user_col = None
-    if 'User' in df.columns:
-        user_col = 'User'
-    elif 'user' in df.columns:
-        user_col = 'user'
+    user_col = 'User'
     
     if not user_col:
         raise ValueError("Could not find a 'user' or 'User' column.")
@@ -37,7 +32,6 @@ def load_and_preprocess_data(filepath):
         
         user_df = clean_signal(user_df)
         
-        # Standardize the user column name to lowercase 'user' in output for consistency
         user_df['user'] = u
         if user_col != 'user':
             user_df = user_df.drop(columns=[user_col], errors='ignore')
@@ -45,16 +39,13 @@ def load_and_preprocess_data(filepath):
         out_name = f"user_{u}_clean.csv"
         out_path = os.path.join(PROCESSED_DIR, out_name)
         
-        # We only really need the time, user and the sensor columns. Let's filter to be sure.
         out_cols = ['time', 'user'] + SENSOR_COLS
         user_df[out_cols].to_csv(out_path, index=False)
         print(f"  Saved: {out_path}")
 
 def clean_signal(df):
     df = df.dropna(subset=SENSOR_COLS)
-    
-    # The dataset might not contain a 'time' column, and it's collected at 100Hz continuously. 
-    # Calculate synthetic time array.
+
     df = df.reset_index(drop=True)
     df['time'] = np.arange(len(df)) / float(SAMPLE_RATE)
 
@@ -67,7 +58,6 @@ def clean_signal(df):
 
 def preprocess_all():
     ensure_dirs()
-    # Since gait_data.csv is at the root of the project, we construct the absolute path
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     data_path = os.path.join(base_dir, "gait_data.csv")
 
