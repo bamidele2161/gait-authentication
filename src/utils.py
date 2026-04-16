@@ -1,25 +1,24 @@
 import os
 import numpy as np
 import pandas as pd
+from pathlib import Path
 
-
+ORIGINAL_RATE = 128
 SAMPLE_RATE     = 50        
 WINDOW_SECS     = 2         
-WINDOW_SAMPLES  = SAMPLE_RATE * WINDOW_SECS  
+WINDOW_SAMPLES  = int(SAMPLE_RATE * WINDOW_SECS)  
 OVERLAP         = 0.5       
 STEP_SAMPLES    = int(WINDOW_SAMPLES * (1 - OVERLAP)) 
 
 SENSOR_COLS     = [
-    'AG-X', 'AG-Y', 'AG-Z',
-    'Acc-X', 'Acc-Y', 'Acc-Z',
-    'Gravity-X', 'Gravity-Y', 'Gravity-Z',
-    'RR-X', 'RR-Y', 'RR-Z',
-    'RV-X', 'RV-Y', 'RV-Z'
+    'GyrX', 'GyrY', 'GyrZ',
+    'AccX', 'AccY', 'AccZ', 'session_type', 'participant_id', 'timestamp'
 ]
 
 PROCESSED_DIR  = "data/processed"
 MODELS_DIR     = "models"
 RESULTS_DIR    = "results"
+SESSIONS = ['st_control', 'st_fatigue']
 
 
 def ensure_dirs():
