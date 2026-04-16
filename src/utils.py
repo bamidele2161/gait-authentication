@@ -14,7 +14,7 @@ SENSOR_COLS     = [
     'GyrX', 'GyrY', 'GyrZ',
     'AccX', 'AccY', 'AccZ', 'session_type', 'participant_id', 'timestamp'
 ]
-
+DATA_DIR = "data"
 PROCESSED_DIR  = "data/processed"
 MODELS_DIR     = "models"
 RESULTS_DIR    = "results"
