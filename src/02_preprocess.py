@@ -44,6 +44,8 @@ def resmaple_signal(df):
 
     resampled_df = pd.DataFrame(resampled_data)
 
+    resampled_df['participant_id'] = df['participant_id'].iloc[0]
+    resampled_df['session_type'] = df['session_type'].iloc[0]
 
     return resampled_df
     
