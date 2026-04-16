@@ -12,10 +12,10 @@ STEP_SAMPLES    = int(WINDOW_SAMPLES * (1 - OVERLAP))
 
 SENSOR_COLS     = [
     'GyrX', 'GyrY', 'GyrZ',
-    'AccX', 'AccY', 'AccZ', 'session_type', 'participant_id', 'timestamp'
+    'AccX', 'AccY', 'AccZ', 'session_type', 'participant_id'
 ]
-
-PROCESSED_DIR  = "data/processed"
+DATA_DIR = Path("data")
+PROCESSED_DIR  = Path("data/processed")
 MODELS_DIR     = "models"
 RESULTS_DIR    = "results"
 SESSIONS = ['st_control', 'st_fatigue']
