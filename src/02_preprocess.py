@@ -6,7 +6,7 @@ import scipy.signal as resample_poly
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.utils import (
-    PROCESSED_DIR, ensure_dirs, SENSOR_COLS, SAMPLE_RATE, ORIGINAL_RATE
+    PROCESSED_DIR, ensure_dirs, SENSOR_COLS, SAMPLE_RATE, ORIGINAL_RATE, SESSIONS
 )
 
 def load_and_preprocess_data(filepath):
@@ -49,20 +49,26 @@ def resmaple_signal(df):
 
     return resampled_df
     
-def preprocess_all():
-    ensure_dirs()
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    data_path = os.path.join(base_dir, "gait_data.csv")
+def create_windows(df, participant_id, session_type):
+    signal = df[SENSOR_COLS].values
+    
+    n_samples = len(signal)
 
-    if not os.path.exists(data_path):
-        print(f"\n Error: {data_path} not found.")
-        return
+    windows = []
+    
 
-    try:
-        load_and_preprocess_data(data_path)
-        print("\n Preprocessing complete!")
-    except Exception as e:
-        print(f" Error during preprocessing: {e}")
+    window_index = 0
+
+    for start in range(0, n_samples - WINDOW_SAMPLES + 1, STEP_SAMPLES):
+        
+    
+def process_session(session_name):
+
+
+def main():
+
+    for session in SESSIONS:
+        process_session(session)
 
 if __name__ == "__main__":
-    preprocess_all()
+    main()
