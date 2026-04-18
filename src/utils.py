@@ -19,6 +19,8 @@ PROCESSED_DIR  = Path("data/processed")
 MODELS_DIR     = "models"
 RESULTS_DIR    = "results"
 SESSIONS = ['st_control', 'st_fatigue']
+WINDOW_DIR = PROCESSED_DIR / "windows"
+FEATURE_DIR = PROCESSED_DIR / "features"
 
 
 def ensure_dirs():

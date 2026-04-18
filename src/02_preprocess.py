@@ -6,7 +6,7 @@ from scipy.signal import resample_poly
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.utils import (
-    DATA_DIR, PROCESSED_DIR, ensure_dirs, SENSOR_COLS, SAMPLE_RATE, ORIGINAL_RATE, STEP_SAMPLES, WINDOW_SAMPLES, WINDOW_SECS, OVERLAP, SESSIONS, 
+    DATA_DIR, PROCESSED_DIR, ensure_dirs, WINDOW_DIR, SENSOR_COLS, SAMPLE_RATE, ORIGINAL_RATE, STEP_SAMPLES, WINDOW_SAMPLES, WINDOW_SECS, OVERLAP, SESSIONS, 
 )
 
 def load_participant_csv(filepath):
@@ -30,65 +30,74 @@ def load_participant_csv(filepath):
 
 def resample_signal(df):
 
-    UP = SAMPLE_RATE // np.gcd(SAMPLE_RATE, ORIGINAL_RATE)
-    DOWN = ORIGINAL_RATE // np.gcd(SAMPLE_RATE, ORIGINAL_RATE)
+    gcd = np.gcd(SAMPLE_RATE, ORIGINAL_RATE)
+    UP = SAMPLE_RATE // gcd
+    DOWN = ORIGINAL_RATE // gcd
     
     numeric_cols = ['GyrX', 'GyrY', 'GyrZ', 'AccX', 'AccY', 'AccZ']
 
-    resampled_data = {}
+    resampled_axes = []
 
 
     for col in numeric_cols:
-        signal = df[col].values.astype(np.float64)
+        signal = df[col].values
 
         resampled_signal = resample_poly(signal, UP, DOWN)
-        resampled_data[col] = resampled_signal
 
-    resampled_df = pd.DataFrame(resampled_data)
+        resampled_axes.append(resampled_signal)
 
-    resampled_df['participant_id'] = df['participant_id'].iloc[0]
-    resampled_df['session_type'] = df['session_type'].iloc[0]
+    return np.column_stack(resampled_axes)
 
-    return resampled_df
+   
     
 
-def create_windows(df, participant_id, session_type):
+def create_windows(signal_array):
 
-    signal = df[SENSOR_COLS].values
-    n_samples = len(signal)
+    n_samples = signal_array.shape[0]
 
     windows=[]
 
-    window_index = 0
+    
 
     for start in range(0, n_samples - WINDOW_SAMPLES + 1, STEP_SAMPLES):
         end = start + WINDOW_SAMPLES
 
-        window_data = signal[start:end]
+        window_data = signal_array[start:end, :]
 
-        if len(window_data) < WINDOW_SAMPLES:
+        if window_data.shape[0] < WINDOW_SAMPLES:
             break
 
-        window_dict= {}
+        windows.append(window_data)
 
-        for i, col in enumerate(SENSOR_COLS):
+    return np.stack(windows)
 
-            for t in range(WINDOW_SAMPLES):
-                window_dict[f"{col}_{t}"] =window_data[t, i]
 
-        window_dict['participant_id'] = participant_id
-        window_dict['session_type'] = session_type
-        window_dict['window_index'] = window_index
 
-        windows.append(window_dict)
-        window_index += 1
+def save_windows(windows_array, participant_id, session_type, output_dir):
 
-    return windows
+    n_windows = windows_array.shape[0]
+    npy_path = output_dir / f"{participant_id}_windows.npy"
+
+    np.save(npy_path, windows_array)
+
+
+    labels_df = pd.DataFrame({
+        'window_index' : np.arange(n_windows),
+
+        'participant_id' : participant_id,
+
+        'session_type' : session_type
+    })
+
+    csv_path = output_dir / f"{participant_id}_labels.csv"
+    
+    labels_df.to_csv(csv_path, index=False)
+    
 
 def process_session(session_name):
 
     input_dir = DATA_DIR / session_name
-    output_dir = PROCESSED_DIR / session_name
+    output_dir = WINDOW_DIR / session_name
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -110,20 +119,27 @@ def process_session(session_name):
 
         original_samples = len(df)
         df_resampled = resample_signal(df)
-        resampled_samples = len(df_resampled)
+
+        resampled_len = df_resampled.shape[0]
+
+        
 
         expected = int(original_samples * SAMPLE_RATE / ORIGINAL_RATE)
-        if abs(resampled_samples - expected) > 5:
+        if abs(resampled_len - expected) > 10:
             print(f"[Warning] unexpected resampled length: {resampled_samples}, expected: {expected}")
         
-        windows = create_windows(df_resampled, participant_id=df['participant_id'].iloc[0], session_type=session_name)
+
+        windows = create_windows(df_resampled)
         
-        output_file = output_dir / f"{participant_id}_windows.csv"
-        windows_df = pd.DataFrame(windows)
+        save_windows(
+            windows, 
+            participant_id = df['participant_id'].iloc[0],
+            session_type = session_name,
+            output_dir = output_dir
+        )
+    
 
-        windows_df.to_csv(output_file, index=False)
-
-        total_windows += len(windows)
+        total_windows += windows.shape[0]
 
 def main():
     
@@ -142,3 +158,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+

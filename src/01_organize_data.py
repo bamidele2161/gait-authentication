@@ -50,7 +50,8 @@ def organize_duogait_data(parent_folder_path, output_path="data"):
 
 
 def main():
-    parent_folder = r"C:\Users\bakinyem\Documents\gait\raw_data"
+    # parent_folder = r"C:\Users\bakinyem\Documents\gait-authentication\raw_data"
+    parent_folder = Path(__file__).resolve().parent.parent / "raw_data"
     output_folder = "data"
 
     organize_duogait_data(parent_folder, output_folder)
