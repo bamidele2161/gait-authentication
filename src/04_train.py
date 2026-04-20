@@ -1,6 +1,9 @@
 import numpy as np
 import pandas as pd
 from sklearn.svm import SVC
+import os
+import sys
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.utils import (
     PROCESSED_DIR, SENSOR_COLS, SESSIONS, WINDOW_DIR, FEATURE_DIR,
@@ -36,10 +39,10 @@ def load_all_features():
 
     return all_data
     
-def build_binary_label(all_data, traget_participant):
-    X = app_data[FEATURE_COLS].values
+def build_binary_labels(all_data, traget_participant): 
+    X = all_data[FEATURE_COLS].values
 
-    Y = (all_data['participant_id'] == traget_participant).astype(int).values
+    y = (all_data['participant_id'] == traget_participant).astype(int).values
 
     n_positive = int(y.sum())
     n_negative = int((y == 0).sum())
@@ -111,12 +114,12 @@ def train_all_participants(all_data):
 
         svm, best_params, best_cv_score = tune_and_train(X_train_scaled, y_train)
 
-        model_path = MODELS_DIR / f"{participant}_svm.pkl
+        model_path = MODELS_DIR / f"{participant}_svm.pkl"
         scaler_path = MODELS_DIR / f"{participant}_scaler.pkl"
 
 
         joblib.dump(svm, model_path)
-        joblib.dum(scaler, scaler_path)
+        joblib.dump(scaler, scaler_path)
 
         holdout_path = MODELS_DIR / f"{participant}_holdout.npz"
         np.savez(holdout_path, X=X_test_scaled, y=y_test_holdout)
@@ -127,7 +130,7 @@ def train_all_participants(all_data):
             'n_negative' : int((y_train == 0).sum()),
             'n_holdout_pos' : int(y_test_holdout.sum()),
             'n_holdout_neg' : int((y_test_holdout == 0).sum()),
-            'best_C'   : best_params['C']
+            'best_C'   : best_params['C'],
             'best_gamma' : best_params['gamma'],
             'best_cv_f1' : round(best_cv_score, 4),
             
