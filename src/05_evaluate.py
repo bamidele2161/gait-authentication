@@ -58,19 +58,16 @@ def evaluate_cross_session(participant_id, svm, scaler, all_fatigue_data):
    if y_fatigue.sum() == 0:
     print(f" [WARNING] {participant_id} not found in st_fatigue. Skipping")
     return None
+    
+   X_fatigue_scaled = scaler.transform(X_fatigue)
 
-   if y_fatigue.sum() == 0:
-    print(f" [WARNING] {participant_id} not found in st_fatigue. Skipping")
+   y_pred = svm.predict(X_fatigue_scaled)
 
-    X_fatigue_scaled = scaler.transform(X_fatigue)
+   frr = compute_frr(y_fatigue, y_pred)
 
-    y_pred = svm.predict(X_fatigue_scaled)
+   n_legitimate = int(y_fatigue.sum())
 
-    frr = compute_frr(y_fatigue, y_pred)
-
-    n_legitimate = int(Y_fatigue.sum())
-
-    return frr
+   return frr
 
 
 def load_fatigue_features():
@@ -188,7 +185,6 @@ def print_summary(results_df):
 
     print("\n[Conclusion]")
     print(f"Cross-session gait authentication reduces FRR from {mean_baseline:.4f} to {mean_cross:.4f}")
-    print(f"This demonstrates that gait characteristics remain stable enough across sessions to enable cross-session authentication.")
 
     summary = {
         'metric' : ['mean_baseline_frr', 'std_baseline_frr', 'mean_cross_session_frr', 'std_cross_session_frr', 'mean_frr_delta', 'wilcoxon_statistic', 'p_value'],
