@@ -10,3 +10,6 @@ __pycache__/
 
 *_left.json
 *_right.json
+
+*_windows.npy
+
