@@ -22,6 +22,7 @@ SESSIONS = ['st_control', 'st_fatigue']
 WINDOW_DIR = PROCESSED_DIR / "windows"
 FEATURE_DIR = PROCESSED_DIR / "features"
 FEATURES_DIR = FEATURE_DIR / "st_control"
+ST_FATIGUE_FEATURES = FEATURE_DIR / "st_fatigue"
 
 FEATURE_COLS = [
     'AccX_mean', 'AccX_std', 'AccX_var', 'AccX_energy', 'AccX_rms', 'AccX_min', 'AccX_max',
