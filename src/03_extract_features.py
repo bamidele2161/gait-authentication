@@ -1,13 +1,11 @@
 import numpy as np
 import pandas as pd
-from pathlib import Path
 import os
 import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.utils import (
-    PROCESSED_DIR, SENSOR_COLS, SESSIONS, WINDOW_DIR, FEATURE_DIR,
-    WINDOW_SECS, WINDOW_SAMPLES, STEP_SAMPLES, OVERLAP
+   SENSOR_COLS, SESSIONS, WINDOW_DIR, FEATURE_DIR,
 )
 def extract_features_window(window):
     features = {}
