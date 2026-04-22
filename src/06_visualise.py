@@ -1,4 +1,4 @@
-import as np
+import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
@@ -90,7 +90,7 @@ def plot_frr_comparison(results_df):
 def plot_frr_delta(results_df):
     df_sorted =results_df.sort_values('frr_delta', ascending=True)
 
-    participants = df_sorted['partcipant_id'].tolist()
+    participants = df_sorted['participant_id'].tolist()
     deltas = df_sorted['frr_delta'].tolist()
 
     colors = [COLOR_DELTA if d > 0 else '#4C4F50' for d in deltas]
@@ -100,6 +100,7 @@ def plot_frr_delta(results_df):
     bars = ax.barh(participants, deltas, color=colors, alpha=0.85, edgecolor='white')
 
     for bar, delta in zip(bars, deltas):
+        x_pos = bar.get_width()
         ax.text(
             x_pos + 0.005,
             bar.get_y() + bar.get_height() / 2,
@@ -149,13 +150,13 @@ def plot_boxplot(results_df):
     )
 
 
-    bp['boxes'][0].set_facecolor(COLOUR_BASELINE)
+    bp['boxes'][0].set_facecolor(COLOR_BASELINE)
     bp['boxes'][0].set_alpha(0.7)
-    bp['boxes'][1].set_facecolor(COLOUR_CROSS)
+    bp['boxes'][1].set_facecolor(COLOR_CROSS)
     bp['boxes'][1].set_alpha(0.7)
     
     for i, (data, colour) in enumerate(
-        [(frr_baseline, COLOUR_BASELINE), (frr_cross, COLOUR_CROSS)], start=1
+        [(frr_baseline, COLOR_BASELINE), (frr_cross, COLOR_CROSS)], start=1
     ):
         x_jitter = np.random.normal(i, 0.04, size=len(data))
         ax.scatter(x_jitter, data, color=colour, alpha=0.6, s=40, zorder=3)
@@ -194,7 +195,7 @@ def plot_boxplot(results_df):
  
 def plot_confusion_matrices(results_df):
  
-    fatigue_dir = FEATURES_DIR / "st_fatigue"
+    fatigue_dir = FEATURE_DIR / "st_fatigue"
     dfs         = [pd.read_csv(f) for f in sorted(fatigue_dir.glob("*_features.csv"))]
     all_fatigue = pd.concat(dfs, ignore_index=True)
  
