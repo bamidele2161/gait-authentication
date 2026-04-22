@@ -11,7 +11,7 @@ warnings.filterwarnings('ignore')
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.utils import (
-    MODELS_DIR, FEATURES_DIR, RESULTS_DIR, FEATURE_COLS, ST_FATIGUE_FEATURES 
+    MODELS_DIR, RESULTS_DIR, FEATURE_COLS, ST_FATIGUE_FEATURES 
 )
 
 def compute_frr(y_true, y_pred):

@@ -6,7 +6,7 @@ from scipy.signal import resample_poly
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.utils import (
-    DATA_DIR, PROCESSED_DIR, ensure_dirs, WINDOW_DIR, SENSOR_COLS, SAMPLE_RATE, ORIGINAL_RATE, STEP_SAMPLES, WINDOW_SAMPLES, WINDOW_SECS, OVERLAP, SESSIONS, 
+    DATA_DIR, PROCESSED_DIR, WINDOW_DIR, SENSOR_COLS, SAMPLE_RATE, ORIGINAL_RATE, STEP_SAMPLES, WINDOW_SAMPLES, WINDOW_SECS, OVERLAP, SESSIONS, 
 )
 
 def load_participant_csv(filepath):
@@ -126,7 +126,7 @@ def process_session(session_name):
 
         expected = int(original_samples * SAMPLE_RATE / ORIGINAL_RATE)
         if abs(resampled_len - expected) > 10:
-            print(f"[Warning] unexpected resampled length: {resampled_samples}, expected: {expected}")
+            print(f"[Warning] unexpected resampled length: {resampled_len}, expected: {expected}")
         
 
         windows = create_windows(df_resampled)
