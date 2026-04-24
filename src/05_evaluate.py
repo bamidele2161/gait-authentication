@@ -62,10 +62,11 @@ def evaluate_baseline(participant_id, svm):
 
     far = compute_far(y_holdout, y_pred)
 
-    n_legimataate = int((y_holdout == 1).sum())
+    n_legimatate = int((y_holdout == 1).sum())
+    
+    n_imposter = int((y_holdout == 0).sum())
 
-
-    return frr
+    return frr, far
 
 
 def evaluate_cross_session(participant_id, svm, scaler, all_fatigue_data):
@@ -85,6 +86,8 @@ def evaluate_cross_session(participant_id, svm, scaler, all_fatigue_data):
    far = compute_far(y_fatigue, y_pred)
 
    n_legitimate = int(y_fatigue.sum())
+
+   n_imposter = int((y_fatigue == 0).sum())
 
    return frr, far
 
@@ -236,7 +239,7 @@ def print_summary(results_df):
 
     summary = {
         'metric' : ['mean_baseline_frr', 'std_baseline_frr', 'mean_cross_session_frr', 'std_cross_session_frr', 'mean_frr_delta', 'wilcoxon_statistic', 'p_value'],
-        'value' : [round(mean_baseline, 4), round(std_baseline, 4), round(mean_cross, 4), round(std_cross, 4), round(mean_delta, 4), round(stat_frr, 4), round(p_value_frr, 4)]
+        'value' : [round(mean_baseline, 4), round(std_baseline, 4), round(mean_cross, 4), round(std_cross, 4), round(mean_delta, 4), round(stat_frr, 4), round(p_value_frr, 4)],
         'metric' : ['mean_baseline_far', 'std_baseline_far', 'mean_cross_session_far', 'std_cross_session_far', 'mean_far_delta', 'wilcoxon_statistic', 'p_value'],
         'value' : [round(mean_baseline_far, 4), round(std_baseline_far, 4), round(mean_cross_far, 4), round(std_cross_far, 4), round(mean_delta_far, 4), round(stat_far, 4), round(p_value_far, 4)]
     }
