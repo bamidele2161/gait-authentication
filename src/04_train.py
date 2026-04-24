@@ -6,9 +6,7 @@ import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.utils import (
-    PROCESSED_DIR, SENSOR_COLS, SESSIONS, WINDOW_DIR, FEATURE_DIR,
-    WINDOW_SECS, WINDOW_SAMPLES, STEP_SAMPLES, OVERLAP, MODELS_DIR, 
-    FEATURES_DIR, FEATURE_COLS, CV_FOLDS, PARAM_GRID
+    MODELS_DIR, FEATURES_DIR, FEATURE_COLS, CV_FOLDS, PARAM_GRID
 )
 from sklearn.preprocessing import StandardScaler
 

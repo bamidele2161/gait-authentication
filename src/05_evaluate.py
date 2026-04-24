@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-from pathlib import Path
 from scipy import stats
 import sys
 import os
@@ -11,7 +10,7 @@ warnings.filterwarnings('ignore')
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.utils import (
-    MODELS_DIR, FEATURES_DIR, RESULTS_DIR, FEATURE_COLS, ST_FATIGUE_FEATURES 
+    MODELS_DIR, RESULTS_DIR, FEATURE_COLS, ST_FATIGUE_FEATURES 
 )
 
 def compute_frr(y_true, y_pred):
@@ -66,6 +65,9 @@ def evaluate_baseline(participant_id, svm):
     
     n_imposter = int((y_holdout == 0).sum())
 
+    print(f"Baseline FRR for {participant_id}: {frr:.4f} ({n_legimataate} legitimate samples)")
+    print(f"Baseline FAR for {participant_id}: {far:.4f} ({n_imposter} imposter samples)")
+
     return frr, far
 
 
@@ -89,6 +91,9 @@ def evaluate_cross_session(participant_id, svm, scaler, all_fatigue_data):
 
    n_imposter = int((y_fatigue == 0).sum())
 
+   print(f"CrossSession FRR for {participant_id}: {frr:.4f} ({n_legitimate} legitimate samples)")
+   print(f"CrossSession FAR for {participant_id}: {far:.4f} ({n_imposter} imposter samples)")
+
    return frr, far
 
 
@@ -98,7 +103,7 @@ def load_fatigue_features():
     csv_files = sorted(fatigue_dir.glob("*_features.csv"))
 
     if not csv_files:
-        raise FilesNotFoundError(
+        raise FileNotFoundError(
             f"No feature files in {fatigue_dir}"
             f"Did you run 03_extract_features.py for st_fatigue?"
         )
