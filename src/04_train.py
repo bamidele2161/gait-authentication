@@ -42,6 +42,8 @@ def build_binary_labels(all_data, traget_participant):
 
     y = (all_data['participant_id'] == traget_participant).astype(int).values
 
+    print(f"Unique labels for participant {traget_participant}: {y}")
+
     n_positive = int(y.sum())
     n_negative = int((y == 0).sum())
 
@@ -53,7 +55,7 @@ def scale_features(X_train, X_test=None):
     X_train_scaled = scaler.fit_transform(X_train)
 
     if X_test is not None:
-        X_test_scaled = scaler.fit_transform(X_test)
+        X_test_scaled = scaler.transform(X_test)
 
         return X_train_scaled, X_test_scaled, scaler
     

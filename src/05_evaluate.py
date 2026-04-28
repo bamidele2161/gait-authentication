@@ -74,7 +74,8 @@ def evaluate_baseline(participant_id, svm):
 def evaluate_cross_session(participant_id, svm, scaler, all_fatigue_data):
    X_fatigue = all_fatigue_data[FEATURE_COLS].values
    y_fatigue = (all_fatigue_data['participant_id'] == participant_id).astype(int).values
-
+   print(y_fatigue)
+   print(X_fatigue.sum())
    if y_fatigue.sum() == 0:
     print(f" [WARNING] {participant_id} not found in st_fatigue. Skipping")
     return None
@@ -200,9 +201,9 @@ def print_summary(results_df):
     std_cross_far = np.std(cross_session_fars)
     mean_delta_far = np.mean(results_df['far_delta'].tolist())
 
-    stat_frr, p_value_frr = run_statistical_test(baseline_frrs, cross_session_frrs)
+    # stat_frr, p_value_frr = run_statistical_test(baseline_frrs, cross_session_frrs)
 
-    stat_far, p_value_far = run_statistical_test(baseline_fars, cross_session_fars)
+    # stat_far, p_value_far = run_statistical_test(baseline_fars, cross_session_fars)
 
     
     print("=" * 60)
@@ -221,22 +222,22 @@ def print_summary(results_df):
     print(f"Mean FRR Reduction: {mean_delta:.4f}")
     print(f"Mean FAR Reduction: {mean_delta_far:.4f}")
 
-    print("\n[Statistical Significance]")
-    print(f"Wilcoxon signed-rank test:")
-    print(f"  FRR Statistic = {stat_frr:.4f}")
-    print(f"  FRR p-value   = {p_value_frr:.4f}")
-    print(f"  FAR Statistic = {stat_far:.4f}")
-    print(f"  FAR p-value   = {p_value_far:.4f}")
+    # print("\n[Statistical Significance]")
+    # print(f"Wilcoxon signed-rank test:")
+    # print(f"  FRR Statistic = {stat_frr:.4f}")
+    # print(f"  FRR p-value   = {p_value_frr:.4f}")
+    # print(f"  FAR Statistic = {stat_far:.4f}")
+    # print(f"  FAR p-value   = {p_value_far:.4f}")
 
-    if p_value_frr < 0.05:
-        print("  Result: Statistically significant improvement (p < 0.05)")
-    else:
-        print("  Result: No statistically significant improvement (p ≥ 0.05)")
+    # if p_value_frr < 0.05:
+    #     print("  Result: Statistically significant improvement (p < 0.05)")
+    # else:
+    #     print("  Result: No statistically significant improvement (p ≥ 0.05)")
 
-    if p_value_far < 0.05:
-        print("  Result: Statistically significant improvement (p < 0.05)")
-    else:
-        print("  Result: No statistically significant improvement (p ≥ 0.05)")
+    # if p_value_far < 0.05:
+        # print("  Result: Statistically significant improvement (p < 0.05)")
+    # else:
+        # print("  Result: No statistically significant improvement (p ≥ 0.05)")
 
     print("\n[Conclusion]")
     print(f"Cross-session gait authentication reduces FRR from {mean_baseline:.4f} to {mean_cross:.4f}")
@@ -245,15 +246,15 @@ def print_summary(results_df):
     summary = {
         'metric': [
             'mean_baseline_frr', 'std_baseline_frr', 'mean_cross_session_frr', 
-            'std_cross_session_frr', 'mean_frr_delta', 'wilcoxon_statistic_frr', 'p_value_frr',
+            'std_cross_session_frr', 'mean_frr_delta', # 'wilcoxon_statistic_frr', 'p_value_frr',
             'mean_baseline_far', 'std_baseline_far', 'mean_cross_session_far', 
-            'std_cross_session_far', 'mean_far_delta', 'wilcoxon_statistic_far', 'p_value_far'
+            'std_cross_session_far', 'mean_far_delta', # 'wilcoxon_statistic_far', 'p_value_far'
         ],
         'value': [
             round(mean_baseline, 4), round(std_baseline, 4), round(mean_cross, 4), 
-            round(std_cross, 4), round(mean_delta, 4), round(stat_frr, 4), round(p_value_frr, 4),
+            round(std_cross, 4), round(mean_delta, 4), # round(stat_frr, 4), round(p_value_frr, 4),
             round(mean_baseline_far, 4), round(std_baseline_far, 4), round(mean_cross_far, 4), 
-            round(std_cross_far, 4), round(mean_delta_far, 4), round(stat_far, 4), round(p_value_far, 4)
+            round(std_cross_far, 4), round(mean_delta_far, 4), # round(stat_far, 4),  round(p_value_far, 4)
         ]
     }
 
