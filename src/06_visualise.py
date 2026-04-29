@@ -294,7 +294,52 @@ def plot_far_comparison(results_df):
     fig.tight_layout()
     save_figure(fig, '05_far_comparison.png')
 
- 
+def plot_frr_far_summary(results_df):
+    
+    categories  = ['Baseline\nFRR', 'Baseline\nFAR',
+                   'Cross-Session\nFRR', 'Cross-Session\nFAR']
+    means = [
+        np.mean(results_df['frr_baseline']),
+        np.mean(results_df['far_baseline']),
+        np.mean(results_df['frr_cross_session']),
+        np.mean(results_df['far_cross_session']),
+    ]
+    stds = [
+        np.std(results_df['frr_baseline']),
+        np.std(results_df['far_baseline']),
+        np.std(results_df['frr_cross_session']),
+        np.std(results_df['far_cross_session']),
+    ]
+    colours = ['#2196F3', '#4CAF50', '#F44336', '#FF9800']
+
+    fig, ax = plt.subplots(figsize=(9, 6))
+    bars = ax.bar(categories, means, color=colours, alpha=0.85,
+                  yerr=stds, capsize=6, edgecolor='white', linewidth=0.8)
+
+    for bar, mean, std in zip(bars, means, stds):
+        ax.text(bar.get_x() + bar.get_width()/2,
+                mean + std + 0.015,
+                f'{mean:.1%}',
+                ha='center', va='bottom', fontsize=10, fontweight='bold')
+
+    ax.set_ylabel('Error Rate', fontsize=12)
+    ax.set_title(
+        'Authentication Error Rates — Full Summary\n'
+        'FRR = user locked out  |  FAR = impostor let in',
+        fontsize=13, fontweight='bold'
+    )
+    ax.set_ylim(0, max(means) + max(stds) + 0.12)
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f'{y:.0%}'))
+    ax.grid(axis='y', alpha=0.3, linestyle='--')
+    
+    ax.axvline(x=1.5, color='black', linewidth=0.8, linestyle=':', alpha=0.5)
+    ax.text(0.5, ax.get_ylim()[1]*0.95, 'Baseline', ha='center',
+            fontsize=9, color='#555', style='italic')
+    ax.text(2.5, ax.get_ylim()[1]*0.95, 'Cross-Session', ha='center',
+            fontsize=9, color='#555', style='italic')
+    fig.tight_layout()
+    save_figure(fig, '06_frr_far_summary.png')
+
 
 def main():
     print("=" * 60)
@@ -329,6 +374,8 @@ def main():
     print("Generating Chart 5: FAR comparison...")
     plot_far_comparison(results_df)
  
+    print("Generating Chart 6: FRR and FAR summary...")
+    plot_frr_far_summary(results_df)
     print("\n" + "=" * 60)
 
  
