@@ -131,7 +131,6 @@ def plot_frr_delta(results_df):
     fig.tight_layout()
     save_figure(fig, '02_frr_delta.png')
     
-
 def plot_boxplot(results_df):
 
     frr_baseline = results_df['frr_baseline'].tolist()
@@ -245,7 +244,10 @@ def plot_confusion_matrices(results_df):
         tp = cm[0, 0]
         fn = cm[0, 1]
         frr = fn / (tp + fn) if (tp + fn) > 0 else 0
-        ax.set_title(f'{participant_id}\nFRR={frr:.1%}', fontsize=9, fontweight='bold')
+        fp = cm[1, 0]
+        tn = cm[1, 1]
+        far = fp / (fp + tn) if (fp + tn) > 0 else 0
+        ax.set_title(f'{participant_id}\nFRR={frr:.3%}\nFAR={far:.3%}', fontsize=9, fontweight='bold')
  
     for idx in range(n, len(axes_flat)):
         axes_flat[idx].set_visible(False)
@@ -253,6 +255,45 @@ def plot_confusion_matrices(results_df):
     fig.tight_layout()
     save_figure(fig, '04_confusion_matrices.png')
  
+def plot_far_comparison(results_df):
+    participants = results_df['participant_id'].tolist()
+    far_baseline = results_df['far_baseline'].tolist()
+    far_cross    = results_df['far_cross_session'].tolist()
+
+    n = len(participants)
+    x = np.arange(n)
+    bar_width = 0.35
+
+    fig, ax = plt.subplots(figsize=(14, 6))
+
+    ax.bar(x - bar_width/2, far_baseline, width=bar_width,
+           color='#2196F3', alpha=0.85, label='Baseline FAR (S1 → S1)')
+    ax.bar(x + bar_width/2, far_cross,    width=bar_width,
+           color='#FF5722', alpha=0.85, label='Cross-Session FAR (S1 → S2)')
+
+    ax.axhline(np.mean(far_baseline), color='#2196F3', linestyle='--',
+               linewidth=1.2, alpha=0.7,
+               label=f'Mean Baseline: {np.mean(far_baseline):.1%}')
+    ax.axhline(np.mean(far_cross), color='#FF5722', linestyle='--',
+               linewidth=1.2, alpha=0.7,
+               label=f'Mean Cross-Session: {np.mean(far_cross):.1%}')
+
+    ax.set_xlabel('Participant', fontsize=12)
+    ax.set_ylabel('False Acceptance Rate (FAR)', fontsize=12)
+    ax.set_title(
+        'Per-Participant FAR: Baseline vs Cross-Session\n'
+        'Lower FAR = Fewer Impostors Accepted',
+        fontsize=13, fontweight='bold'
+    )
+    ax.set_xticks(x)
+    ax.set_xticklabels(participants, rotation=45, ha='right', fontsize=9)
+    ax.set_ylim(0, 1.05)
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f'{y:.0%}'))
+    ax.legend(fontsize=10, loc='upper right')
+    ax.grid(axis='y', alpha=0.3, linestyle='--')
+    fig.tight_layout()
+    save_figure(fig, '05_far_comparison.png')
+
  
 
 def main():
@@ -284,6 +325,9 @@ def main():
  
     print("Generating Chart 4: Confusion matrix grid...")
     plot_confusion_matrices(results_df)
+
+    print("Generating Chart 5: FAR comparison...")
+    plot_far_comparison(results_df)
  
     print("\n" + "=" * 60)
 
