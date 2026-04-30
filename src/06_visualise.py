@@ -12,7 +12,7 @@ warnings.filterwarnings('ignore')
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.utils import (
-    RESULTS_DIR, FEATURE_COLS, FEATURE_DIR, MODELS_DIR,
+    RESULTS_DIR, FEATURE_COLS, FEATURE_DIR, FEATURES_DIR, MODELS_DIR, ST_FATIGUE_FEATURES,
     COLOR_BASELINE, COLOR_CROSS, COLOR_DELTA, FIGURES_DIR
 )
 
@@ -31,7 +31,7 @@ def compute_eer(y_true, decision_scores):
     fnr = 1 - tpr
 
     abs_diff = np.abs(fnr -fpr)
-    err_idx = np.argmin(abs_diff)
+    eer_idx = np.argmin(abs_diff)
 
     err = (fnr[eer_idx] + fpr[eer_idx]) / 2
 
@@ -396,7 +396,7 @@ def plot_eer_comparison(eer_df):
 
 def plot_det_curve(results_df):
 
-    fatigue_dir = FEATURES_DIR / "st_fatigue"
+    fatigue_dir = ST_FATIGUE_FEATURES
     dfs         = [pd.read_csv(f) for f in sorted(fatigue_dir.glob("*_features.csv"))]
     all_fatigue = pd.concat(dfs, ignore_index=True)
 
@@ -475,12 +475,12 @@ def plot_det_curve(results_df):
 
 def collect_eer_data(results_df):
 
-    fatigue_dir = FEATURES_DIR / "st_fatigue"
+    fatigue_dir = ST_FATIGUE_FEATURES
     dfs         = [pd.read_csv(f) for f in sorted(fatigue_dir.glob("*_features.csv"))]
     all_fatigue = pd.concat(dfs, ignore_index=True)
 
 
-    control_dir = FEATURES_DIR / "st_control"
+    control_dir = FEATURES_DIR
     ctrl_dfs    = [pd.read_csv(f) for f in sorted(control_dir.glob("*_features.csv"))]
     all_control = pd.concat(ctrl_dfs, ignore_index=True)
 
