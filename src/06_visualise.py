@@ -4,13 +4,15 @@ import matplotlib.pyplot as plt
 import os
 import sys
 from sklearn.metrics import confusion_matrix
+from sklearn.metrics import roc_curve
+from matplotlib.lines import Line2D
 import joblib
 import warnings
 warnings.filterwarnings('ignore')
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.utils import (
-    RESULTS_DIR, FEATURE_COLS, FEATURE_DIR, MODELS_DIR,
+    RESULTS_DIR, FEATURE_COLS, FEATURE_DIR, FEATURES_DIR, MODELS_DIR, ST_FATIGUE_FEATURES,
     COLOR_BASELINE, COLOR_CROSS, COLOR_DELTA, FIGURES_DIR
 )
 
@@ -22,6 +24,21 @@ def save_figure(fig, filename):
     plt.close(fig)
 
     print(f" Saved : {path}")
+
+def compute_eer(y_true, decision_scores):
+    fpr, tpr, thresholds = roc_curve(y_true, decision_scores, pos_label=1)
+
+    fnr = 1 - tpr
+
+    abs_diff = np.abs(fnr -fpr)
+    eer_idx = np.argmin(abs_diff)
+
+    err = (fnr[eer_idx] + fpr[eer_idx]) / 2
+
+    threshold = thresholds[eer_idx]
+
+    return float(err), float(threshold)
+
 
 
 def plot_frr_comparison(results_df):
@@ -294,8 +311,8 @@ def plot_far_comparison(results_df):
     fig.tight_layout()
     save_figure(fig, '05_far_comparison.png')
 
+
 def plot_frr_far_summary(results_df):
-    
     categories  = ['Baseline\nFRR', 'Baseline\nFAR',
                    'Cross-Session\nFRR', 'Cross-Session\nFAR']
     means = [
@@ -339,7 +356,164 @@ def plot_frr_far_summary(results_df):
             fontsize=9, color='#555', style='italic')
     fig.tight_layout()
     save_figure(fig, '06_frr_far_summary.png')
+ 
+def plot_eer_comparison(eer_df):
+    df_sorted    = eer_df.sort_values('eer_cross', ascending=True)
+    participants = df_sorted['participant_id'].tolist()
+    eer_base     = df_sorted['eer_baseline'].tolist()
+    eer_cross    = df_sorted['eer_cross'].tolist()
 
+    n = len(participants)
+    y = np.arange(n)
+    bar_height = 0.35
+
+    fig, ax = plt.subplots(figsize=(10, 8))
+
+    ax.barh(y + bar_height/2, eer_base,  height=bar_height,
+            color='#2196F3', alpha=0.85, label='Baseline EER')
+    ax.barh(y - bar_height/2, eer_cross, height=bar_height,
+            color='#F44336', alpha=0.85, label='Cross-Session EER')
+
+    ax.set_yticks(y)
+    ax.set_yticklabels(participants, fontsize=9)
+    ax.set_xlabel('Equal Error Rate (EER)', fontsize=12)
+    ax.set_title(
+        'EER per Participant: Baseline vs Cross-Session\n'
+        'EER = point where FRR equals FAR  |  Lower = Better',
+        fontsize=13, fontweight='bold'
+    )
+    ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{x:.0%}'))
+    ax.axvline(x=np.mean(eer_base),  color='#2196F3', linestyle='--',
+               linewidth=1.2, alpha=0.7,
+               label=f'Mean Baseline EER: {np.mean(eer_base):.1%}')
+    ax.axvline(x=np.mean(eer_cross), color='#F44336', linestyle='--',
+               linewidth=1.2, alpha=0.7,
+               label=f'Mean Cross-Session EER: {np.mean(eer_cross):.1%}')
+    ax.legend(fontsize=10)
+    ax.grid(axis='x', alpha=0.3, linestyle='--')
+    fig.tight_layout()
+    save_figure(fig, '07_eer_comparison.png')
+
+def plot_det_curve(results_df):
+
+    fatigue_dir = ST_FATIGUE_FEATURES
+    dfs         = [pd.read_csv(f) for f in sorted(fatigue_dir.glob("*_features.csv"))]
+    all_fatigue = pd.concat(dfs, ignore_index=True)
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+
+    eer_baseline_list = []
+    eer_cross_list    = []
+
+    for _, row in results_df.iterrows():
+        pid    = row['participant_id']
+        svm    = joblib.load(MODELS_DIR / f"{pid}_svm.pkl")
+        scaler = joblib.load(MODELS_DIR / f"{pid}_scaler.pkl")
+
+
+        holdout  = np.load(MODELS_DIR / f"{pid}_holdout.npz")
+        X_h, y_h = holdout['X'], holdout['y']
+        scores_h = svm.decision_function(X_h)
+
+        fpr_b, tpr_b, _ = roc_curve(y_h, scores_h, pos_label=1)
+        fnr_b = 1 - tpr_b   # FRR = 1 - TPR
+
+        ax.plot(fpr_b, fnr_b, color='#2196F3', alpha=0.25, linewidth=0.9)
+
+        eer_b, _ = compute_eer(y_h, scores_h)
+        eer_baseline_list.append(eer_b)
+
+
+        X_f      = all_fatigue[FEATURE_COLS].values
+        y_f      = (all_fatigue['participant_id'] == pid).astype(int).values
+        X_f_sc   = scaler.transform(X_f)
+        scores_f = svm.decision_function(X_f_sc)
+
+        fpr_f, tpr_f, _ = roc_curve(y_f, scores_f, pos_label=1)
+        fnr_f = 1 - tpr_f
+
+        ax.plot(fpr_f, fnr_f, color='#F44336', alpha=0.25, linewidth=0.9)
+
+        eer_f, _ = compute_eer(y_f, scores_f)
+        eer_cross_list.append(eer_f)
+
+
+    ax.plot([0, 1], [0, 1], 'k--', linewidth=1.0, alpha=0.5, label='EER line (FAR = FRR)')
+
+
+    mean_eer_b = np.mean(eer_baseline_list)
+    mean_eer_c = np.mean(eer_cross_list)
+    ax.scatter(mean_eer_b, mean_eer_b, color='#2196F3', s=120, zorder=5,
+               label=f'Mean Baseline EER: {mean_eer_b:.1%}')
+    ax.scatter(mean_eer_c, mean_eer_c, color='#F44336', s=120, zorder=5,
+               label=f'Mean Cross-Session EER: {mean_eer_c:.1%}')
+
+    
+    proxy = [
+        Line2D([0],[0], color='#2196F3', lw=2, label='Baseline (S1→S1) — per participant'),
+        Line2D([0],[0], color='#F44336', lw=2, label='Cross-Session (S1→S2) — per participant'),
+        Line2D([0],[0], color='k',       lw=1, linestyle='--', label='EER diagonal'),
+    ]
+
+    ax.set_xlabel('False Acceptance Rate (FAR)', fontsize=12)
+    ax.set_ylabel('False Rejection Rate (FRR)', fontsize=12)
+    ax.set_title(
+        'DET Curve — Detection Error Tradeoff\n'
+        'Each line = one participant  |  Closer to origin = better system',
+        fontsize=13, fontweight='bold'
+    )
+    ax.set_xlim(0, 1); ax.set_ylim(0, 1)
+    ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{x:.0%}'))
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f'{y:.0%}'))
+    ax.legend(handles=proxy + ax.get_legend_handles_labels()[0][-2:],
+              fontsize=9, loc='upper right')
+    ax.grid(alpha=0.3, linestyle='--')
+    ax.set_aspect('equal')
+    fig.tight_layout()
+    save_figure(fig, '08_det_curve.png')
+
+
+def collect_eer_data(results_df):
+
+    fatigue_dir = ST_FATIGUE_FEATURES
+    dfs         = [pd.read_csv(f) for f in sorted(fatigue_dir.glob("*_features.csv"))]
+    all_fatigue = pd.concat(dfs, ignore_index=True)
+
+
+    control_dir = FEATURES_DIR
+    ctrl_dfs    = [pd.read_csv(f) for f in sorted(control_dir.glob("*_features.csv"))]
+    all_control = pd.concat(ctrl_dfs, ignore_index=True)
+
+    eer_rows = []
+
+    for _, row in results_df.iterrows():
+        pid = row['participant_id']
+
+        svm    = joblib.load(MODELS_DIR / f"{pid}_svm.pkl")
+        scaler = joblib.load(MODELS_DIR / f"{pid}_scaler.pkl")
+
+        holdout   = np.load(MODELS_DIR / f"{pid}_holdout.npz")
+        X_h, y_h  = holdout['X'], holdout['y']
+        scores_h  = svm.decision_function(X_h)
+        
+        eer_b, _  = compute_eer(y_h, scores_h)
+
+       
+        X_f       = all_fatigue[FEATURE_COLS].values
+        y_f       = (all_fatigue['participant_id'] == pid).astype(int).values
+        X_f_sc    = scaler.transform(X_f)
+        scores_f  = svm.decision_function(X_f_sc)
+        eer_f, _  = compute_eer(y_f, scores_f)
+
+        eer_rows.append({
+            'participant_id': pid,
+            'eer_baseline'  : round(eer_b, 4),
+            'eer_cross'     : round(eer_f, 4),
+        })
+
+        print(f"  {pid}  EER baseline={eer_b:.3f}  cross={eer_f:.3f}")
+
+    return pd.DataFrame(eer_rows)
 
 def main():
     print("=" * 60)
@@ -373,9 +547,19 @@ def main():
 
     print("Generating Chart 5: FAR comparison...")
     plot_far_comparison(results_df)
- 
-    print("Generating Chart 6: FRR and FAR summary...")
+    
+    print("Computing EER data for all participants...")
+    eer_df = collect_eer_data(results_df)
+
+    print("Generating Chart 6: FRR + FAR summary...")
     plot_frr_far_summary(results_df)
+
+    print("Generating Chart 7: EER per participant...")
+    plot_eer_comparison(eer_df)
+
+    print("Generating Chart 8: DET curve...")
+    plot_det_curve(results_df)
+
     print("\n" + "=" * 60)
 
  
