@@ -10,7 +10,7 @@ warnings.filterwarnings('ignore')
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.utils import (
-    MODELS_DIR, RESULTS_DIR, FEATURE_COLS, ST_FATIGUE_FEATURES 
+    MODELS_DIR, RESULTS_DIR, FEATURE_COLS, ST_FATIGUE_FEATURES, DT_CONTROL_FEATURES, DT_FATIGUE_FEATURES
 )
 
 def compute_frr(y_true, y_pred):
@@ -98,6 +98,59 @@ def evaluate_cross_session(participant_id, svm, scaler, all_fatigue_data):
    return frr, far
 
 
+def evaluate_dt_control_cross_session(participant_id, svm, scaler, all_dt_control_data):
+   X_dt_control = all_dt_control_data[FEATURE_COLS].values
+   y_dt_control = (all_dt_control_data['participant_id'] == participant_id).astype(int).values
+   print(y_dt_control)
+   print(X_dt_control.sum())
+   if y_dt_control.sum() == 0:
+    print(f" [WARNING] {participant_id} not found in dt_control. Skipping")
+    return None
+    
+   X_control_scaled = scaler.transform(X_dt_control)
+
+   y_pred = svm.predict(X_control_scaled)
+
+   frr = compute_frr(y_dt_control, y_pred)
+
+   far = compute_far(y_dt_control, y_pred)
+
+   n_legitimate = int(y_dt_control.sum())
+
+   n_imposter = int((y_dt_control == 0).sum())
+
+   print(f"Dual Task Control Cross Session FRR for {participant_id}: {frr:.4f} ({n_legitimate} legitimate samples)")
+   print(f"Dual Task Control Cross FAR for {participant_id}: {far:.4f} ({n_imposter} imposter samples)")
+
+   return frr, far
+
+def evaluate_df_fatigure_cross_session(participant_id, svm, scaler, all_dt_fatigue_data):
+   X_dt_fatigue = all_dt_fatigue_data[FEATURE_COLS].values
+   y_dt_fatigue = (all_dt_fatigue_data['participant_id'] == participant_id).astype(int).values
+   print(y_dt_fatigue)
+   print(X_dt_fatigue.sum())
+   if y_dt_fatigue.sum() == 0:
+    print(f" [WARNING] {participant_id} not found in dt_fatigue. Skipping")
+    return None
+    
+   X_fatigue_scaled = scaler.transform(X_dt_fatigue)
+
+   y_pred = svm.predict(X_fatigue_scaled)
+
+   frr = compute_frr(y_dt_fatigue, y_pred)
+
+   far = compute_far(y_dt_fatigue, y_pred)
+
+   n_legitimate = int(y_dt_fatigue.sum())
+
+   n_imposter = int((y_dt_fatigue == 0).sum())
+
+   print(f"Dual Task Fatigue Cross Session FRR for {participant_id}: {frr:.4f} ({n_legitimate} legitimate samples)")
+   print(f"Dual Task Fatigue Cross Session FAR for {participant_id}: {far:.4f} ({n_imposter} imposter samples)")
+
+   return frr, far
+
+
 def load_fatigue_features():
 
     fatigue_dir = ST_FATIGUE_FEATURES
@@ -115,6 +168,36 @@ def load_fatigue_features():
 
     return all_fatigue
 
+def load_dt_control_features():
+    dt_control_dir = DT_CONTROL_FEATURES
+    csv_files = sorted(dt_control_dir.glob("*_features.csv"))
+
+    if not csv_files:
+        raise FileNotFoundError(
+            f"No features files in {dt_control_dir}"
+            f"Did you run 03_extract_features.py for st_fatigue?"
+        )
+    
+    dfs = [pd.read_csv(f) for f in csv_files]
+
+    all_dt_control = pd.concat(dfs, ignore_index=True)
+    return all_dt_control
+
+
+def load_dt_fatigue_features():
+    dt_fatigue_dir = DT_FATIGUE_FEATURES
+    csv_files = sorted(dt_fatigue_dir.glob("*_features.csv"))
+
+    if not csv_files:
+        raise FileNotFoundError(
+            f"No features files in {dt_fatigue_dir}"
+            f"Did you run 03_extract_features.py for st_fatigue?"
+        )
+    
+    dfs = [pd.read_csv(f) for f in csv_files]
+
+    all_dt_fatigue = pd.concat(dfs, ignore_index=True)
+    return all_dt_fatigue
 
 
 def run_statistical_test(baseline_frrs, cross_session_frrs):
@@ -126,7 +209,7 @@ def run_statistical_test(baseline_frrs, cross_session_frrs):
     
 
 
-def evaluate_all_participants(all_fatigue_data):
+def evaluate_all_participants(all_fatigue_data, all_dt_control_data, all_dt_fatigue_data):
     
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -152,25 +235,43 @@ def evaluate_all_participants(all_fatigue_data):
             participant_id, svm, scaler, all_fatigue_data
         )
 
+        frr_dt_control, far_dt_control = evaluate_dt_control_cross_session(
+            participant_id, svm, scaler, all_dt_control_data
+        )
 
-        if frr_baseline is None or frr_cross is None: 
+        frr_dt_fatigue, far_dt_fatigue = evaluate_df_fatigure_cross_session(
+            participant_id, svm, scaler, all_dt_fatigue_data
+        )
+
+
+        if frr_baseline is None or frr_cross is None or frr_dt_control is None or frr_dt_fatigue is None: 
             continue
         
-        if far_baseline is None or far_cross is None: 
+        if far_baseline is None or far_cross is None or far_dt_control is None or far_dt_fatigue is None: 
             continue
 
         frr_delta = frr_cross - frr_baseline
 
         far_delta = far_cross - far_baseline
 
+        frr_dt_delta = frr_dt_fatigue - frr_dt_control
+
+        far_dt_delta = far_dt_fatigue - far_dt_control
+
         results_rows.append({
             'participant_id' : participant_id,
             'frr_baseline' : round(frr_baseline, 4),
             'frr_cross_session' : round(frr_cross, 4),
+            'frr_dt_control': round(frr_dt_control, 4),
+            'frr_dt_fatigue': round(frr_dt_fatigue, 4),
             'far_baseline' : round(far_baseline, 4),
             'far_cross_session' : round(far_cross, 4),
+            'far_dt_control': round(far_dt_control, 4),
+            'far_dt_fatigue': round(far_dt_fatigue, 4),
             'frr_delta' : round(frr_delta, 4),
-            'far_delta' : round(far_delta, 4)
+            'far_delta' : round(far_delta, 4),
+            'frr_dt_delta' : round(frr_dt_delta, 4),
+            'far_dt_delta' : round(far_dt_delta, 4)
         })
 
     results_df = pd.DataFrame(results_rows)
@@ -200,6 +301,19 @@ def print_summary(results_df):
     mean_cross_far = np.mean(cross_session_fars)
     std_cross_far = np.std(cross_session_fars)
     mean_delta_far = np.mean(results_df['far_delta'].tolist())
+
+    mean_dt_control_frr = np.mean(results_df['frr_dt_control'].tolist())
+    std_dt_control_frr = np.std(results_df['frr_dt_control'].tolist())
+    mean_dt_fatigue_frr = np.mean(results_df['frr_dt_fatigue'].tolist())
+    std_dt_fatigue_frr = np.std(results_df['frr_dt_fatigue'].tolist())
+    mean_dt_delta_frr = np.mean(results_df['frr_dt_delta'].tolist())
+
+    mean_dt_control_far = np.mean(results_df['far_dt_control'].tolist())
+    std_dt_control_far = np.std(results_df['far_dt_control'].tolist())
+    mean_dt_fatigue_far = np.mean(results_df['far_dt_fatigue'].tolist())
+    std_dt_fatigue_far = np.std(results_df['far_dt_fatigue'].tolist())
+    mean_dt_delta_far = np.mean(results_df['far_dt_delta'].tolist())
+
 
     # stat_frr, p_value_frr = run_statistical_test(baseline_frrs, cross_session_frrs)
 
@@ -243,18 +357,57 @@ def print_summary(results_df):
     print(f"Cross-session gait authentication reduces FRR from {mean_baseline:.4f} to {mean_cross:.4f}")
     print(f"Cross-session gait authentication reduces FAR from {mean_baseline_far:.4f} to {mean_cross_far:.4f}")
 
+    # summary = {
+    #     'metric': [
+    #         'mean_baseline_frr', 'std_baseline_frr', 'mean_cross_session_frr', 
+    #         'std_cross_session_frr', 'mean_frr_delta', # 'wilcoxon_statistic_frr', 'p_value_frr',
+    #         'mean_baseline_far', 'std_baseline_far', 'mean_cross_session_far', 
+    #         'std_cross_session_far', 'mean_far_delta', # 'wilcoxon_statistic_far', 'p_value_far'
+    #     ],
+    #     'value': [
+    #         round(mean_baseline, 4), round(std_baseline, 4), round(mean_cross, 4), 
+    #         round(std_cross, 4), round(mean_delta, 4), # round(stat_frr, 4), round(p_value_frr, 4),
+    #         round(mean_baseline_far, 4), round(std_baseline_far, 4), round(mean_cross_far, 4), 
+    #         round(std_cross_far, 4), round(mean_delta_far, 4), # round(stat_far, 4),  round(p_value_far, 4)
+    #     ]
+    # }
     summary = {
         'metric': [
-            'mean_baseline_frr', 'std_baseline_frr', 'mean_cross_session_frr', 
-            'std_cross_session_frr', 'mean_frr_delta', # 'wilcoxon_statistic_frr', 'p_value_frr',
-            'mean_baseline_far', 'std_baseline_far', 'mean_cross_session_far', 
-            'std_cross_session_far', 'mean_far_delta', # 'wilcoxon_statistic_far', 'p_value_far'
+            
+            'mean_baseline_frr', 'std_baseline_frr', 
+            'mean_cross_session_frr', 'std_cross_session_frr', 
+            'mean_frr_delta',
+            
+            'mean_frr_dt_control', 'std_frr_dt_control',
+            'mean_frr_dt_fatigue', 'std_frr_dt_fatigue',
+            'mean_frr_dt_delta',
+            
+            'mean_baseline_far', 'std_baseline_far', 
+            'mean_cross_session_far', 'std_cross_session_far', 
+            'mean_far_delta',
+            
+            'mean_far_dt_control', 'std_frr_dt_control',
+            'mean_far_dt_fatigue', 'std_far_dt_fatigue',
+            'mean_far_dt_delta'
         ],
         'value': [
-            round(mean_baseline, 4), round(std_baseline, 4), round(mean_cross, 4), 
-            round(std_cross, 4), round(mean_delta, 4), # round(stat_frr, 4), round(p_value_frr, 4),
-            round(mean_baseline_far, 4), round(std_baseline_far, 4), round(mean_cross_far, 4), 
-            round(std_cross_far, 4), round(mean_delta_far, 4), # round(stat_far, 4),  round(p_value_far, 4)
+         
+            round(mean_baseline, 4), round(std_baseline, 4), 
+            round(mean_cross, 4), round(std_cross, 4), 
+            round(mean_delta, 4),
+            
+            round(mean_dt_control_frr, 4), round(std_dt_control_frr, 4),
+            round(mean_dt_fatigue_frr, 4), round(std_dt_fatigue_frr, 4),
+            round(mean_dt_delta_frr, 4),
+
+    
+            round(mean_baseline_far, 4), round(std_baseline_far, 4), 
+            round(mean_cross_far, 4), round(std_cross_far, 4), 
+            round(mean_delta_far, 4),
+            
+            round(mean_dt_control_far, 4), round(std_dt_control_far, 4),
+            round(mean_dt_fatigue_far, 4), round(std_dt_fatigue_far, 4),
+            round(mean_dt_delta_far, 4)
         ]
     }
 
@@ -279,7 +432,11 @@ def main():
 
     all_fatigue_data = load_fatigue_features()
 
-    results_df = evaluate_all_participants(all_fatigue_data)
+    all_dt_control_data = load_dt_control_features()
+
+    all_dt_fatigue_data = load_dt_fatigue_features()
+
+    results_df = evaluate_all_participants(all_fatigue_data, all_dt_control_data, all_dt_fatigue_data)
 
     print_summary(results_df)
 

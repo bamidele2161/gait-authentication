@@ -6,7 +6,7 @@ from pathlib import Path
 ORIGINAL_RATE = 128
 SAMPLE_RATE     = 50        
 WINDOW_SECS     = 2         
-WINDOW_SAMPLES  = int(SAMPLE_RATE * WINDOW_SECS)  
+WINDOW_SAMPLES  = int(ORIGINAL_RATE * WINDOW_SECS)  
 OVERLAP         = 0.5       
 STEP_SAMPLES    = int(WINDOW_SAMPLES * (1 - OVERLAP)) 
 
@@ -18,18 +18,20 @@ DATA_DIR = Path("data")
 PROCESSED_DIR  = Path("data/processed")
 MODELS_DIR     = Path("models")
 RESULTS_DIR    = Path("results")
-SESSIONS = ['st_control', 'st_fatigue']
+SESSIONS = ['st_control', 'st_fatigue', 'dt_control', 'dt_fatigue']
 WINDOW_DIR = PROCESSED_DIR / "windows"
 FEATURE_DIR = PROCESSED_DIR / "features"
 FEATURES_DIR = FEATURE_DIR / "st_control"
 ST_FATIGUE_FEATURES = FEATURE_DIR / "st_fatigue"
+DT_CONTROL_FEATURES = FEATURE_DIR / "dt_control"
+DT_FATIGUE_FEATURES = FEATURE_DIR / "dt_fatigue"
 
 FEATURE_COLS = [
     'AccX_mean', 'AccX_std', 'AccX_var', 'AccX_energy', 'AccX_rms', 'AccX_min', 'AccX_max',
     'AccY_mean', 'AccY_std', 'AccY_var', 'AccY_energy', 'AccY_rms', 'AccY_min', 'AccY_max',
     'AccZ_mean', 'AccZ_std', 'AccZ_var', 'AccZ_energy', 'AccZ_rms', 'AccZ_min', 'AccZ_max',
     'GyrX_mean', 'GyrX_std', 'GyrX_var', 'GyrX_energy', 'GyrX_rms', 'GyrX_min', 'GyrX_max',
-    'GyrY_mean', 'GyrY_std', 'GyrY_var', 'GyrY_energy', 'GyrY_rms', 'GyrY_min', 'GyrY_max',
+    'GyrY_mean', 'GyrY_std', 'GyrY_var', 'GyrY_energy', 'GyrY_rms', 'GyrY_min', 'GyrY_max',     
     'GyrZ_mean', 'GyrZ_std', 'GyrZ_var', 'GyrZ_energy', 'GyrZ_rms', 'GyrZ_min', 'GyrZ_max',
 ]
 
