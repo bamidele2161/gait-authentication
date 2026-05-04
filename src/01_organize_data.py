@@ -5,7 +5,7 @@ def organize_duogait_data(parent_folder_path, output_path="data"):
     parent = Path(parent_folder_path)
     output = Path(output_path)
     
-    conditions = ['st_control', 'st_fatigue']
+    conditions = ['st_control', 'st_fatigue', 'dt_control', 'dt_fatigue']
     
     for condition in conditions:
         

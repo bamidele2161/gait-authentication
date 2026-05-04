@@ -36,17 +36,18 @@ def resample_signal(df):
     
     numeric_cols = ['GyrX', 'GyrY', 'GyrZ', 'AccX', 'AccY', 'AccZ']
 
-    resampled_axes = []
+    # resampled_axes = []
 
 
-    for col in numeric_cols:
-        signal = df[col].values
+    # for col in numeric_cols:
+    #     signal = df[col].values
 
-        resampled_signal = resample_poly(signal, UP, DOWN)
+    #     resampled_signal = resample_poly(signal, UP, DOWN)
 
-        resampled_axes.append(resampled_signal)
+    #     resampled_axes.append(resampled_signal)
 
-    return np.column_stack(resampled_axes)
+    # return np.column_stack(resampled_axes)
+    return df[numeric_cols].values
 
    
     
