@@ -1,0 +1,8 @@
+{
+  "threshold": -1.0585821198134777,
+  "target_far": 0.01,
+  "validation_frr": 0.0,
+  "validation_far": 0.009551098376313277,
+  "validation_eer": 0.010313945844031806,
+  "eer_threshold": -0.994238835387109
+}

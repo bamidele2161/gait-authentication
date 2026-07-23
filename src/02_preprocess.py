@@ -1,164 +1,92 @@
-import pandas as pd
-import numpy as np
+"""Create sacrum windows while retaining chronological grouping metadata."""
+
 import os
 import sys
-from scipy.signal import resample_poly
+
+import numpy as np
+import pandas as pd
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from src.utils import (
-    DATA_DIR, PROCESSED_DIR, WINDOW_DIR, SENSOR_COLS, SAMPLE_RATE, ORIGINAL_RATE, STEP_SAMPLES, WINDOW_SAMPLES, WINDOW_SECS, OVERLAP, SESSIONS, 
+from src.utils import (  # noqa: E402
+    DATA_DIR, EXCLUDED_PARTICIPANTS, ORIGINAL_RATE, OVERLAP, SENSOR_COLS,
+    SESSIONS, STEP_SAMPLES, WINDOW_DIR, WINDOW_SAMPLES, WINDOW_SECS,
 )
 
+
 def load_participant_csv(filepath):
-
-    print(f"Loading dataset from: {filepath}")
     df = pd.read_csv(filepath)
-    print(f"Columns found: {list(df.columns)}")
-
-
-    columns_to_drop = ['timestamp', 'Unnamed: 0']
-
-    df = df.drop(columns=columns_to_drop, errors='ignore')
-    for col in SENSOR_COLS:
-        if col not in df.columns:
-            print(f"Missing column: {col} in the dataset")
-            return None
-
+    missing = [column for column in SENSOR_COLS if column not in df.columns]
+    if missing:
+        print(f"[WARNING] Skipping {filepath.name}; missing columns: {missing}")
+        return None
+    if "participant_id" not in df.columns:
+        print(f"[WARNING] Skipping {filepath.name}; participant_id is missing")
+        return None
     return df
 
 
-
-def resample_signal(df):
-
-    gcd = np.gcd(SAMPLE_RATE, ORIGINAL_RATE)
-    UP = SAMPLE_RATE // gcd
-    DOWN = ORIGINAL_RATE // gcd
-    
-    numeric_cols = ['GyrX', 'GyrY', 'GyrZ', 'AccX', 'AccY', 'AccZ']
-
-    # resampled_axes = []
-
-
-    # for col in numeric_cols:
-    #     signal = df[col].values
-
-    #     resampled_signal = resample_poly(signal, UP, DOWN)
-
-    #     resampled_axes.append(resampled_signal)
-
-    # return np.column_stack(resampled_axes)
-    return df[numeric_cols].values
-
-   
-    
-
 def create_windows(signal_array):
-
-    n_samples = signal_array.shape[0]
-
-    windows=[]
-
-    
-
-    for start in range(0, n_samples - WINDOW_SAMPLES + 1, STEP_SAMPLES):
-        end = start + WINDOW_SAMPLES
-
-        window_data = signal_array[start:end, :]
-
-        if window_data.shape[0] < WINDOW_SAMPLES:
-            break
-
-        windows.append(window_data)
-
-    return np.stack(windows)
+    starts = np.arange(0, len(signal_array) - WINDOW_SAMPLES + 1, STEP_SAMPLES)
+    if len(starts) == 0:
+        return np.empty((0, WINDOW_SAMPLES, len(SENSOR_COLS))), starts
+    windows = np.stack([signal_array[start:start + WINDOW_SAMPLES] for start in starts])
+    return windows, starts
 
 
-
-def save_windows(windows_array, participant_id, session_type, output_dir):
-
-    n_windows = windows_array.shape[0]
-    npy_path = output_dir / f"{participant_id}_windows.npy"
-
-    np.save(npy_path, windows_array)
-
-
-    labels_df = pd.DataFrame({
-        'window_index' : np.arange(n_windows),
-
-        'participant_id' : participant_id,
-
-        'session_type' : session_type
+def save_windows(windows, starts, participant_id, session_type, output_dir):
+    np.save(output_dir / f"{participant_id}_windows.npy", windows)
+    # Twenty-second blocks are the grouping unit during cross-validation.
+    block_samples = 20 * ORIGINAL_RATE
+    labels = pd.DataFrame({
+        "window_index": np.arange(len(windows)),
+        "start_sample": starts,
+        "block_id": starts // block_samples,
+        "participant_id": participant_id,
+        "session_type": session_type,
     })
+    labels.to_csv(output_dir / f"{participant_id}_labels.csv", index=False)
 
-    csv_path = output_dir / f"{participant_id}_labels.csv"
-    
-    labels_df.to_csv(csv_path, index=False)
-    
 
 def process_session(session_name):
-
     input_dir = DATA_DIR / session_name
     output_dir = WINDOW_DIR / session_name
-
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    csv_files = sorted(input_dir.glob("*.csv"))
-    print(f"Files in {input_dir}: {csv_files}")
+    csv_files = sorted(input_dir.glob("*_SA.csv"))
     if not csv_files:
-        print(f"[Warning]: No CSV files found in {input_dir}")
-        return 
+        print(f"[WARNING] No sacrum CSV files in {input_dir}")
+        return
 
-    total_windows = 0
-
-    for file_path in csv_files:
-        print(f"Processing {file_path}")
-        participant_id = file_path.stem.replace("_SA", "")
-
-        df = load_participant_csv(file_path)
+    for filepath in csv_files:
+        df = load_participant_csv(filepath)
         if df is None:
             continue
+        participant_id = str(df["participant_id"].iloc[0])
+        if participant_id in EXCLUDED_PARTICIPANTS:
+            print(f"[EXCLUDED] {participant_id}: known invalid sacrum segment")
+            continue
 
-        original_samples = len(df)
-        df_resampled = resample_signal(df)
+        sensor_data = df[SENSOR_COLS].apply(pd.to_numeric, errors="coerce").to_numpy()
+        finite_rows = np.isfinite(sensor_data).all(axis=1)
+        if not finite_rows.all():
+            print(f"[WARNING] {filepath.name}: dropping {(~finite_rows).sum()} non-finite rows")
+            sensor_data = sensor_data[finite_rows]
 
-        resampled_len = df_resampled.shape[0]
+        windows, starts = create_windows(sensor_data)
+        if not len(windows):
+            print(f"[WARNING] {filepath.name}: too short for one window")
+            continue
+        save_windows(windows, starts, participant_id, session_name, output_dir)
+        print(f"{session_name:12s} {participant_id}: {len(windows)} windows")
 
-        
-
-        expected = int(original_samples * SAMPLE_RATE / ORIGINAL_RATE)
-        if abs(resampled_len - expected) > 10:
-            print(f"[Warning] unexpected resampled length: {resampled_len}, expected: {expected}")
-        
-
-        windows = create_windows(df_resampled)
-        
-        save_windows(
-            windows, 
-            participant_id = df['participant_id'].iloc[0],
-            session_type = session_name,
-            output_dir = output_dir
-        )
-    
-
-        total_windows += windows.shape[0]
 
 def main():
-    
-    print("DUO-GAIT Preprocessing Pipeline")
-    print(f"  Original rate : {ORIGINAL_RATE} Hz")
-    print(f"  Target rate   : {SAMPLE_RATE} Hz")
-    print(f"  Window size   : {WINDOW_SECS}s ({WINDOW_SAMPLES} samples)")
-    print(f"  Step size     : {STEP_SAMPLES} samples ({OVERLAP*100:.0f}% overlap)")
-    print(f"  Axes          : {SENSOR_COLS}")
-
+    print("DUO-GAIT sacrum preprocessing")
+    print(f"128 Hz, {WINDOW_SECS}s windows, {OVERLAP:.0%} overlap")
     for session in SESSIONS:
         process_session(session)
+    print(f"Windows saved under {WINDOW_DIR}")
 
-    print("\n\nAll sessions processed.")
-    print(f"Output saved to: {PROCESSED_DIR}")
 
 if __name__ == "__main__":
     main()
-
-
-
