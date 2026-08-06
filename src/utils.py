@@ -24,9 +24,20 @@ FEATURE_COLS = [
     for stat in TIME_FEATURE_STATS
 ]
 
-# sub_07's sacrum ST-control file has ~596k samples instead of ~46k and is not
-# a valid six-minute segment. Exclude it consistently from every condition.
-EXCLUDED_PARTICIPANTS = {"sub_07"}
+# Known recording-level corrections, defined independently of authentication
+# performance. sub_07's sacrum ST-control CSV contains the complete recording
+# session. The synchronized sensors identify the actual ST-control walk below.
+KNOWN_TIME_TRIMS = {
+    ("st_control", "sub_07"): {
+        "start": 769.53125,
+        "end": 1146.875,
+        "expected_rows": 48_301,
+    },
+}
+
+# Retained as a shared hook for any future participant-level quality exclusions.
+# sub_07 is included after applying the validated recording-level trim above.
+EXCLUDED_PARTICIPANTS = set()
 
 SESSIONS = ["st_control", "st_fatigue", "dt_control", "dt_fatigue"]
 DATA_DIR = SRC_DIR / "data"

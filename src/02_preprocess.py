@@ -8,8 +8,8 @@ import pandas as pd
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.utils import (  # noqa: E402
-    DATA_DIR, EXCLUDED_PARTICIPANTS, ORIGINAL_RATE, OVERLAP, SENSOR_COLS,
-    SESSIONS, STEP_SAMPLES, WINDOW_DIR, WINDOW_SAMPLES, WINDOW_SECS,
+    DATA_DIR, EXCLUDED_PARTICIPANTS, KNOWN_TIME_TRIMS, ORIGINAL_RATE, OVERLAP,
+    SENSOR_COLS, SESSIONS, STEP_SAMPLES, WINDOW_DIR, WINDOW_SAMPLES, WINDOW_SECS,
 )
 
 
@@ -31,6 +31,39 @@ def create_windows(signal_array):
         return np.empty((0, WINDOW_SAMPLES, len(SENSOR_COLS))), starts
     windows = np.stack([signal_array[start:start + WINDOW_SAMPLES] for start in starts])
     return windows, starts
+
+
+def apply_known_time_trim(df, participant_id, session_name, filepath):
+    """Apply a pre-specified recording correction and validate its boundaries."""
+    trim = KNOWN_TIME_TRIMS.get((session_name, participant_id))
+    if trim is None:
+        return df
+    if "timestamp" not in df.columns:
+        raise ValueError(f"{filepath.name}: timestamp is required for the known trim")
+
+    timestamps = pd.to_numeric(df["timestamp"], errors="coerce")
+    if timestamps.isna().any():
+        raise ValueError(f"{filepath.name}: non-numeric timestamps prevent the known trim")
+
+    selected = df.loc[timestamps.between(trim["start"], trim["end"], inclusive="both")].copy()
+    if len(selected) != trim["expected_rows"]:
+        raise ValueError(
+            f"{filepath.name}: expected {trim['expected_rows']} rows after trimming "
+            f"{trim['start']}--{trim['end']} s, found {len(selected)}"
+        )
+
+    selected_timestamps = pd.to_numeric(selected["timestamp"])
+    if not (
+        np.isclose(selected_timestamps.iloc[0], trim["start"], atol=1e-5)
+        and np.isclose(selected_timestamps.iloc[-1], trim["end"], atol=1e-5)
+    ):
+        raise ValueError(f"{filepath.name}: trimmed timestamps do not match the expected boundaries")
+
+    print(
+        f"[TRIMMED] {participant_id} {session_name}: "
+        f"{len(df)} -> {len(selected)} rows ({trim['start']}--{trim['end']} s)"
+    )
+    return selected
 
 
 def save_windows(windows, starts, participant_id, session_type, output_dir):
@@ -65,6 +98,8 @@ def process_session(session_name):
         if participant_id in EXCLUDED_PARTICIPANTS:
             print(f"[EXCLUDED] {participant_id}: known invalid sacrum segment")
             continue
+
+        df = apply_known_time_trim(df, participant_id, session_name, filepath)
 
         sensor_data = df[SENSOR_COLS].apply(pd.to_numeric, errors="coerce").to_numpy()
         finite_rows = np.isfinite(sensor_data).all(axis=1)
