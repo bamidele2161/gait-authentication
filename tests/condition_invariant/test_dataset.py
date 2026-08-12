@@ -5,7 +5,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.condition_invariant.dataset import load_participant_windows
+from src.condition_invariant.config import CONDITIONS
+from src.condition_invariant.dataset import (
+    discover_participants,
+    load_participant_windows,
+)
 from tests.condition_invariant.test_records import assert_raises
 
 
@@ -36,6 +40,41 @@ def write_test_participant(
         "session_type": [label_condition] * number_of_labels,
     })
     labels.to_csv(condition_dir / f"{participant_id}_labels.csv", index=False)
+
+
+def write_participant_files_for_all_conditions(
+    root: Path,
+    participants: tuple[str, ...],
+) -> None:
+    """Create discoverable window filenames for every configured condition."""
+
+    for condition in CONDITIONS:
+        condition_dir = root / condition
+        condition_dir.mkdir(parents=True)
+        for participant_id in participants:
+            np.save(
+                condition_dir / f"{participant_id}_windows.npy",
+                np.zeros((1, 256, 6), dtype=np.float32),
+            )
+
+
+def test_discover_participants_returns_sorted_shared_participants(tmp_path: Path) -> None:
+    write_participant_files_for_all_conditions(tmp_path, ("sub_03", "sub_01"))
+
+    participants = discover_participants(tmp_path)
+
+    assert participants == ("sub_01", "sub_03")
+
+
+def test_discover_participants_rejects_condition_mismatch(tmp_path: Path) -> None:
+    write_participant_files_for_all_conditions(tmp_path, ("sub_01", "sub_02"))
+    (tmp_path / "dt_fatigue" / "sub_02_windows.npy").unlink()
+
+    assert_raises(
+        ValueError,
+        "Participant mismatch in dt_fatigue",
+        lambda: discover_participants(tmp_path),
+    )
 
 
 def test_load_participant_windows_returns_valid_records(tmp_path: Path) -> None:

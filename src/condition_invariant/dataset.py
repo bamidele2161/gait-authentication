@@ -18,6 +18,38 @@ REQUIRED_LABEL_COLUMNS = (
 )
 
 
+def discover_participants(windows_dir: Path = WINDOWS_DIR) -> tuple[str, ...]:
+    """Return participants present in every condition, rejecting mismatches."""
+
+    participants_by_condition = {}
+    for condition in CONDITIONS:
+        condition_dir = windows_dir / condition
+        if not condition_dir.is_dir():
+            raise FileNotFoundError(f"Condition directory not found: {condition_dir}")
+
+        participants = {
+            path.name.removesuffix("_windows.npy")
+            for path in condition_dir.glob("*_windows.npy")
+        }
+        if not participants:
+            raise FileNotFoundError(f"No window files found in {condition_dir}")
+        participants_by_condition[condition] = participants
+
+    reference_condition = CONDITIONS[0]
+    reference_participants = participants_by_condition[reference_condition]
+    for condition in CONDITIONS[1:]:
+        condition_participants = participants_by_condition[condition]
+        if condition_participants != reference_participants:
+            missing = sorted(reference_participants - condition_participants)
+            unexpected = sorted(condition_participants - reference_participants)
+            raise ValueError(
+                f"Participant mismatch in {condition}: "
+                f"missing={missing}, unexpected={unexpected}"
+            )
+
+    return tuple(sorted(reference_participants))
+
+
 def load_participant_windows(
     participant_id: str,
     condition: str,
