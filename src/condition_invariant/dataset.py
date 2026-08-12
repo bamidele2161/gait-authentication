@@ -17,6 +17,11 @@ REQUIRED_LABEL_COLUMNS = (
     "session_type",
 )
 
+# Complete dataset organized as:
+# dataset[participant_id][condition] -> list of chronological GaitWindow objects
+GaitDataset = dict[str, dict[str, list[GaitWindow]]]
+
+
 
 def discover_participants(windows_dir: Path = WINDOWS_DIR) -> tuple[str, ...]:
     """Return participants present in every condition, rejecting mismatches."""
@@ -114,3 +119,26 @@ def load_participant_windows(
         )
 
     return records
+
+
+def load_all_windows(windows_dir: Path = WINDOWS_DIR) -> GaitDataset:
+    """Load every shared participant under all four conditions."""
+
+    participants = discover_participants(windows_dir)
+    dataset: GaitDataset = {}
+
+    for participant_id in participants:
+        dataset[participant_id] = {}
+        for condition in CONDITIONS:
+            records = load_participant_windows(
+                participant_id=participant_id,
+                condition=condition,
+                windows_dir=windows_dir,
+            )
+            if not records:
+                raise ValueError(
+                    f"No windows loaded for {participant_id} under {condition}"
+                )
+            dataset[participant_id][condition] = records
+
+    return dataset

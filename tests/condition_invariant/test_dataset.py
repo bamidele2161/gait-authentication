@@ -8,6 +8,7 @@ import pandas as pd
 from src.condition_invariant.config import CONDITIONS
 from src.condition_invariant.dataset import (
     discover_participants,
+    load_all_windows,
     load_participant_windows,
 )
 from tests.condition_invariant.test_records import assert_raises
@@ -26,7 +27,7 @@ def write_test_participant(
     """Create a small processed-window fixture matching the real file format."""
 
     condition_dir = root / condition
-    condition_dir.mkdir(parents=True)
+    condition_dir.mkdir(parents=True, exist_ok=True)
 
     signals = np.zeros((number_of_signals, 256, 6), dtype=np.float64)
     signals[1:] = 1.0
@@ -58,6 +59,26 @@ def write_participant_files_for_all_conditions(
             )
 
 
+def write_complete_test_dataset(
+    root: Path,
+    participants: tuple[str, ...],
+    number_of_windows: int = 2,
+) -> None:
+    """Create matching signal and label files for a complete tiny dataset."""
+
+    for condition in CONDITIONS:
+        for participant_id in participants:
+            write_test_participant(
+                root,
+                number_of_signals=number_of_windows,
+                number_of_labels=number_of_windows,
+                participant_id=participant_id,
+                label_participant_id=participant_id,
+                condition=condition,
+                label_condition=condition,
+            )
+
+
 def test_discover_participants_returns_sorted_shared_participants(tmp_path: Path) -> None:
     write_participant_files_for_all_conditions(tmp_path, ("sub_03", "sub_01"))
 
@@ -75,6 +96,20 @@ def test_discover_participants_rejects_condition_mismatch(tmp_path: Path) -> Non
         "Participant mismatch in dt_fatigue",
         lambda: discover_participants(tmp_path),
     )
+
+
+def test_load_all_windows_organizes_by_participant_then_condition(
+    tmp_path: Path,
+) -> None:
+    write_complete_test_dataset(tmp_path, ("sub_02", "sub_01"))
+
+    dataset = load_all_windows(tmp_path)
+
+    assert tuple(dataset) == ("sub_01", "sub_02")
+    assert tuple(dataset["sub_01"]) == CONDITIONS
+    assert len(dataset["sub_01"]["st_control"]) == 2
+    assert dataset["sub_02"]["dt_fatigue"][0].participant_id == "sub_02"
+    assert dataset["sub_02"]["dt_fatigue"][0].condition == "dt_fatigue"
 
 
 def test_load_participant_windows_returns_valid_records(tmp_path: Path) -> None:
