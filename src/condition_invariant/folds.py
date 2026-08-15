@@ -2,6 +2,9 @@
 
 from dataclasses import dataclass
 
+from src.condition_invariant.config import WINDOW_SAMPLES
+from src.condition_invariant.records import GaitWindow
+
 
 @dataclass(frozen=True)
 class OuterFold:
@@ -10,6 +13,15 @@ class OuterFold:
     fold_index: int
     development_participants: tuple[str, ...]
     evaluation_participants: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class DevelopmentRecordingSplit:
+    """Chronological learning and validation windows from one recording."""
+
+    learning_windows: tuple[GaitWindow, ...]
+    validation_windows: tuple[GaitWindow, ...]
+
 
 
 def create_outer_folds(
@@ -63,3 +75,57 @@ def create_outer_folds(
         raise AssertionError("Every participant must be evaluated exactly once")
 
     return tuple(folds)
+
+
+def split_development_recording(
+    windows: list[GaitWindow],
+    learning_fraction: float = 0.80,
+) -> DevelopmentRecordingSplit:
+    """Split one recording chronologically using complete block IDs."""
+
+    if not 0 < learning_fraction < 1:
+        raise ValueError("learning_fraction must be between 0 and 1")
+    if not windows:
+        raise ValueError("Cannot split an empty recording")
+
+    ordered_windows = sorted(windows, key=lambda window: window.start_sample)
+    participant_ids = {window.participant_id for window in ordered_windows}
+    conditions = {window.condition for window in ordered_windows}
+    if len(participant_ids) != 1 or len(conditions) != 1:
+        raise ValueError("All windows must come from one participant and condition")
+
+    block_ids = sorted({window.block_id for window in ordered_windows})
+    if len(block_ids) < 2:
+        raise ValueError("At least two chronological blocks are required")
+
+    learning_block_count = int(len(block_ids) * learning_fraction)
+    learning_block_count = min(max(learning_block_count, 1), len(block_ids) - 1)
+    learning_blocks = set(block_ids[:learning_block_count])
+    validation_blocks = set(block_ids[learning_block_count:])
+
+    learning_windows = [
+        window for window in ordered_windows if window.block_id in learning_blocks
+    ]
+    validation_windows = [
+        window for window in ordered_windows if window.block_id in validation_blocks
+    ]
+
+    # The last learning window can overlap the first validation window even
+    # though their block IDs differ. Remove learning windows until no raw sample
+    # can occur in both partitions.
+    first_validation_start = validation_windows[0].start_sample
+    learning_windows = [
+        window
+        for window in learning_windows
+        if window.start_sample + WINDOW_SAMPLES <= first_validation_start
+    ]
+
+    if not learning_windows or not validation_windows:
+        raise ValueError("Split produced an empty learning or validation partition")
+    if learning_windows[-1].start_sample + WINDOW_SAMPLES > first_validation_start:
+        raise AssertionError("Learning and validation windows share raw samples")
+
+    return DevelopmentRecordingSplit(
+        learning_windows=tuple(learning_windows),
+        validation_windows=tuple(validation_windows),
+    )
