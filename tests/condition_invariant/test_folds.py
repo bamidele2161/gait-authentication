@@ -4,7 +4,9 @@ import numpy as np
 
 from src.condition_invariant.dataset import discover_participants
 from src.condition_invariant.folds import (
+    OuterFold,
     create_outer_folds,
+    prepare_development_fold_data,
     split_development_recording,
 )
 from src.condition_invariant.records import GaitWindow
@@ -31,6 +33,28 @@ def make_block_windows(number_of_blocks: int = 10) -> list[GaitWindow]:
             )
             window_index += 1
     return windows
+
+
+def make_tiny_fold_dataset():
+    """Create four conditions for three small synthetic participants."""
+
+    dataset = {}
+    for participant_id in ("sub_01", "sub_02", "sub_03"):
+        dataset[participant_id] = {}
+        for condition in ("st_control", "st_fatigue", "dt_control", "dt_fatigue"):
+            participant_windows = make_block_windows(5)
+            dataset[participant_id][condition] = [
+                GaitWindow(
+                    participant_id=participant_id,
+                    condition=condition,
+                    window_index=window.window_index,
+                    start_sample=window.start_sample,
+                    block_id=window.block_id,
+                    signal=window.signal,
+                )
+                for window in participant_windows
+            ]
+    return dataset
 
 
 def test_four_folds_have_twelve_development_and_four_evaluation_users() -> None:
@@ -130,3 +154,39 @@ def test_development_recording_rejects_mixed_participants() -> None:
         "one participant and condition",
         lambda: split_development_recording(windows),
     )
+
+
+def test_prepare_development_data_excludes_evaluation_participant() -> None:
+    dataset = make_tiny_fold_dataset()
+    fold = OuterFold(
+        fold_index=0,
+        development_participants=("sub_01", "sub_02"),
+        evaluation_participants=("sub_03",),
+    )
+
+    prepared = prepare_development_fold_data(dataset, fold)
+    used = {
+        window.participant_id
+        for window in (*prepared.learning_windows, *prepared.validation_windows)
+    }
+
+    assert used == {"sub_01", "sub_02"}
+    assert "sub_03" not in used
+
+
+def test_prepare_development_data_includes_every_condition() -> None:
+    dataset = make_tiny_fold_dataset()
+    fold = OuterFold(
+        fold_index=0,
+        development_participants=("sub_01", "sub_02"),
+        evaluation_participants=("sub_03",),
+    )
+
+    prepared = prepare_development_fold_data(dataset, fold)
+
+    assert {window.condition for window in prepared.learning_windows} == {
+        "st_control", "st_fatigue", "dt_control", "dt_fatigue"
+    }
+    assert {window.condition for window in prepared.validation_windows} == {
+        "st_control", "st_fatigue", "dt_control", "dt_fatigue"
+    }

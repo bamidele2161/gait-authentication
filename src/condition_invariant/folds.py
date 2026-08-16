@@ -2,7 +2,8 @@
 
 from dataclasses import dataclass
 
-from src.condition_invariant.config import WINDOW_SAMPLES
+from src.condition_invariant.config import CONDITIONS, WINDOW_SAMPLES
+from src.condition_invariant.dataset import GaitDataset
 from src.condition_invariant.records import GaitWindow
 
 
@@ -18,6 +19,14 @@ class OuterFold:
 @dataclass(frozen=True)
 class DevelopmentRecordingSplit:
     """Chronological learning and validation windows from one recording."""
+
+    learning_windows: tuple[GaitWindow, ...]
+    validation_windows: tuple[GaitWindow, ...]
+
+
+@dataclass(frozen=True)
+class DevelopmentFoldData:
+    """All learning and validation windows allowed in one outer fold."""
 
     learning_windows: tuple[GaitWindow, ...]
     validation_windows: tuple[GaitWindow, ...]
@@ -126,6 +135,55 @@ def split_development_recording(
         raise AssertionError("Learning and validation windows share raw samples")
 
     return DevelopmentRecordingSplit(
+        learning_windows=tuple(learning_windows),
+        validation_windows=tuple(validation_windows),
+    )
+
+
+def prepare_development_fold_data(
+    dataset: GaitDataset,
+    fold: OuterFold,
+    learning_fraction: float = 0.80,
+) -> DevelopmentFoldData:
+    """Collect chronological learning/validation windows for one outer fold."""
+
+    dataset_participants = set(dataset)
+    development_set = set(fold.development_participants)
+    evaluation_set = set(fold.evaluation_participants)
+
+    if development_set & evaluation_set:
+        raise ValueError("Development and evaluation participants overlap")
+    if not development_set <= dataset_participants:
+        missing = sorted(development_set - dataset_participants)
+        raise ValueError(f"Development participants missing from dataset: {missing}")
+
+    learning_windows = []
+    validation_windows = []
+    for participant_id in fold.development_participants:
+        participant_data = dataset[participant_id]
+        for condition in CONDITIONS:
+            if condition not in participant_data:
+                raise ValueError(
+                    f"Missing {condition} data for development participant "
+                    f"{participant_id}"
+                )
+            recording_split = split_development_recording(
+                participant_data[condition],
+                learning_fraction=learning_fraction,
+            )
+            learning_windows.extend(recording_split.learning_windows)
+            validation_windows.extend(recording_split.validation_windows)
+
+    used_participants = {
+        window.participant_id
+        for window in (*learning_windows, *validation_windows)
+    }
+    if used_participants != development_set:
+        raise AssertionError("Prepared data does not match development participants")
+    if used_participants & evaluation_set:
+        raise AssertionError("Evaluation participant leaked into development data")
+
+    return DevelopmentFoldData(
         learning_windows=tuple(learning_windows),
         validation_windows=tuple(validation_windows),
     )
