@@ -6,7 +6,9 @@ from src.condition_invariant.records import GaitWindow
 from src.condition_invariant.config import CONDITIONS
 from src.condition_invariant.triplets import (
     GaitTriplet,
+    POSITIVE_CONDITION_PAIRS,
     build_triplet_index,
+    sample_balanced_triplets,
     sample_triplet,
     window_identity,
 )
@@ -191,3 +193,64 @@ def test_sample_triplet_is_reproducible_with_the_same_seed() -> None:
     assert window_identity(first.anchor) == window_identity(second.anchor)
     assert window_identity(first.positive) == window_identity(second.positive)
     assert window_identity(first.negative) == window_identity(second.negative)
+
+
+def triplet_signature(triplet: GaitTriplet):
+    return (
+        window_identity(triplet.anchor),
+        window_identity(triplet.positive),
+        window_identity(triplet.negative),
+    )
+
+
+def test_positive_condition_pairs_cover_all_ten_combinations() -> None:
+    assert len(POSITIVE_CONDITION_PAIRS) == 10
+    assert len(set(POSITIVE_CONDITION_PAIRS)) == 10
+    assert sum(first == second for first, second in POSITIVE_CONDITION_PAIRS) == 4
+    assert sum(first != second for first, second in POSITIVE_CONDITION_PAIRS) == 6
+
+
+def test_balanced_cycle_gives_each_participant_forty_triplets() -> None:
+    index = build_triplet_index(make_complete_learning_windows())
+
+    triplets = sample_balanced_triplets(index, seed=42)
+    participant_counts = {
+        participant_id: sum(
+            triplet.anchor.participant_id == participant_id
+            for triplet in triplets
+        )
+        for participant_id in index
+    }
+
+    assert len(triplets) == 80
+    assert participant_counts == {"sub_01": 40, "sub_02": 40}
+
+
+def test_balanced_cycle_uses_each_negative_condition_equally() -> None:
+    index = build_triplet_index(make_complete_learning_windows())
+
+    triplets = sample_balanced_triplets(index, seed=42)
+    negative_counts = {
+        condition: sum(
+            triplet.negative.condition == condition for triplet in triplets
+        )
+        for condition in CONDITIONS
+    }
+
+    assert negative_counts == {
+        "st_control": 20,
+        "st_fatigue": 20,
+        "dt_control": 20,
+        "dt_fatigue": 20,
+    }
+
+
+def test_balanced_sampling_is_reproducible() -> None:
+    index = build_triplet_index(make_complete_learning_windows())
+
+    first = sample_balanced_triplets(index, seed=123)
+    second = sample_balanced_triplets(index, seed=123)
+
+    assert [triplet_signature(item) for item in first] == [
+        triplet_signature(item) for item in second
+    ]

@@ -10,6 +10,16 @@ from src.condition_invariant.records import GaitWindow
 
 TripletIndex = dict[str, dict[str, tuple[GaitWindow, ...]]]
 
+# Four same-condition pairs plus every unordered cross-condition pair.
+POSITIVE_CONDITION_PAIRS = tuple(
+    [(condition, condition) for condition in CONDITIONS]
+    + [
+        (first_condition, second_condition)
+        for first_index, first_condition in enumerate(CONDITIONS)
+        for second_condition in CONDITIONS[first_index + 1:]
+    ]
+)
+
 
 def window_identity(window: GaitWindow) -> tuple[str, str, int, int]:
     """Return the metadata fields that uniquely locate one gait window."""
@@ -138,3 +148,46 @@ def sample_triplet(
     ]
 
     return GaitTriplet(anchor=anchor, positive=positive, negative=negative)
+
+
+def sample_balanced_triplets(
+    index: TripletIndex,
+    seed: int,
+    repetitions: int = 1,
+) -> tuple[GaitTriplet, ...]:
+    """Sample balanced condition combinations for every participant."""
+
+    if repetitions < 1:
+        raise ValueError("repetitions must be at least 1")
+
+    random_generator = np.random.default_rng(seed)
+    triplets = []
+    for _ in range(repetitions):
+        for anchor_participant in index:
+            for first_condition, second_condition in POSITIVE_CONDITION_PAIRS:
+                # Distance is symmetric, but swapping cross-condition roles
+                # avoids always making ST-control the anchor.
+                if (
+                    first_condition != second_condition
+                    and bool(random_generator.integers(2))
+                ):
+                    anchor_condition = second_condition
+                    positive_condition = first_condition
+                else:
+                    anchor_condition = first_condition
+                    positive_condition = second_condition
+
+                for negative_condition in CONDITIONS:
+                    triplets.append(
+                        sample_triplet(
+                            index=index,
+                            random_generator=random_generator,
+                            anchor_participant=anchor_participant,
+                            anchor_condition=anchor_condition,
+                            positive_condition=positive_condition,
+                            negative_condition=negative_condition,
+                        )
+                    )
+
+    order = random_generator.permutation(len(triplets))
+    return tuple(triplets[int(position)] for position in order)
