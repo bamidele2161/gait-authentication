@@ -20,11 +20,12 @@ It is intentionally separate from the existing statistical-feature RBF-SVM basel
 3. `dataset.py`
 4. `folds.py`
 5. `triplets.py`
-6. `model.py`
-7. `train.py`
-8. `enrollment.py`
-9. `scoring.py`
-10. `metrics.py`
-11. `run_experiment.py`
+6. `normalization.py`
+7. `model.py`
+8. `train.py`
+9. `enrollment.py`
+10. `scoring.py`
+11. `metrics.py`
+12. `run_experiment.py`
 
 Each file will be implemented and tested before work begins on the next file.
