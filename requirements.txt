@@ -1,8 +1,8 @@
-numpy
+numpy<2
 pandas
 scikit-learn
 matplotlib
 seaborn
 scipy
-
-
+torch
+pytest
