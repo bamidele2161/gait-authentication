@@ -1,0 +1,74 @@
+"""Checks for the shared gait encoder and triplet loss."""
+
+import pytest
+import torch
+
+from src.condition_invariant.model import GaitEncoder, triplet_loss
+
+
+def test_encoder_returns_one_unit_embedding_per_window() -> None:
+    encoder = GaitEncoder(dropout_probability=0.0)
+    windows = torch.randn(3, 256, 6)
+
+    embeddings = encoder(windows)
+
+    assert embeddings.shape == (3, 64)
+    torch.testing.assert_close(
+        torch.linalg.vector_norm(embeddings, dim=1),
+        torch.ones(3),
+    )
+
+
+def test_encoder_rejects_incorrect_window_shape() -> None:
+    encoder = GaitEncoder()
+
+    with pytest.raises(ValueError, match="Expected windows with shape"):
+        encoder(torch.randn(2, 128, 6))
+
+
+def test_all_triplet_roles_share_one_encoder() -> None:
+    encoder = GaitEncoder(dropout_probability=0.0)
+    windows = torch.randn(2, 256, 6)
+
+    first = encoder(windows)
+    second = encoder(windows)
+
+    torch.testing.assert_close(first, second)
+
+
+def test_triplet_loss_is_zero_when_margin_is_already_satisfied() -> None:
+    anchor = torch.tensor([[1.0, 0.0]])
+    positive = torch.tensor([[1.0, 0.0]])
+    negative = torch.tensor([[-1.0, 0.0]])
+
+    loss = triplet_loss(anchor, positive, negative, margin=0.2)
+
+    torch.testing.assert_close(loss, torch.tensor(0.0))
+
+
+def test_triplet_loss_penalizes_a_close_negative() -> None:
+    anchor = torch.tensor([[1.0, 0.0]], requires_grad=True)
+    positive = torch.tensor([[0.0, 1.0]], requires_grad=True)
+    negative = torch.tensor([[1.0, 0.0]], requires_grad=True)
+
+    loss = triplet_loss(anchor, positive, negative, margin=0.2)
+    loss.backward()
+
+    assert loss.item() > 0
+    assert anchor.grad is not None
+    assert positive.grad is not None
+    assert negative.grad is not None
+
+
+def test_model_settings_are_validated() -> None:
+    with pytest.raises(ValueError, match="hidden_size must be positive"):
+        GaitEncoder(hidden_size=0)
+    with pytest.raises(ValueError, match="dropout_probability"):
+        GaitEncoder(dropout_probability=1.0)
+    with pytest.raises(ValueError, match="margin must be positive"):
+        triplet_loss(
+            torch.zeros(1, 2),
+            torch.zeros(1, 2),
+            torch.ones(1, 2),
+            margin=0.0,
+        )
