@@ -3,7 +3,13 @@
 import pytest
 import torch
 
-from src.condition_invariant.model import GaitEncoder, triplet_loss
+from src.condition_invariant.model import (
+    DevelopmentIdentityClassifier,
+    GaitEncoder,
+    batch_hard_triplet_loss,
+    supervised_contrastive_loss,
+    triplet_loss,
+)
 
 
 def test_encoder_returns_one_unit_embedding_per_window() -> None:
@@ -72,3 +78,36 @@ def test_model_settings_are_validated() -> None:
             torch.ones(1, 2),
             margin=0.0,
         )
+
+
+def test_batch_hard_loss_backpropagates_through_difficult_examples() -> None:
+    embeddings = torch.tensor(
+        [[1.0, 0.0], [0.8, 0.2], [0.7, 0.3], [-1.0, 0.0]],
+        requires_grad=True,
+    )
+    labels = torch.tensor([0, 0, 1, 1])
+
+    loss = batch_hard_triplet_loss(embeddings, labels, margin=0.2)
+    loss.backward()
+
+    assert loss.item() > 0
+    assert embeddings.grad is not None
+
+
+def test_development_classifier_returns_one_logit_per_identity() -> None:
+    classifier = DevelopmentIdentityClassifier(embedding_size=4, number_of_identities=3)
+
+    logits = classifier(torch.randn(5, 4))
+
+    assert logits.shape == (5, 3)
+
+
+def test_supervised_contrastive_loss_prefers_separated_identities() -> None:
+    labels = torch.tensor([0, 0, 1, 1])
+    separated = torch.tensor([[1.0, 0.0], [0.9, 0.1], [-1.0, 0.0], [-0.9, 0.1]])
+    mixed = torch.tensor([[1.0, 0.0], [-1.0, 0.0], [0.9, 0.1], [-0.9, 0.1]])
+
+    separated_loss = supervised_contrastive_loss(separated, labels)
+    mixed_loss = supervised_contrastive_loss(mixed, labels)
+
+    assert separated_loss < mixed_loss

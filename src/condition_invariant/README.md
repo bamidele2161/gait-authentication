@@ -1,6 +1,6 @@
 # Condition-Invariant Gait Authentication
 
-This package contains the proposed cross-condition triplet-learning experiment.
+This package contains the proposed cross-condition metric-learning experiment.
 
 It is intentionally separate from the existing statistical-feature RBF-SVM baseline in the numbered files under `src/`.
 
@@ -20,12 +20,14 @@ It is intentionally separate from the existing statistical-feature RBF-SVM basel
 3. `dataset.py`
 4. `folds.py`
 5. `triplets.py`
-6. `normalization.py`
-7. `model.py`
-8. `train.py`
-9. `enrollment.py`
-10. `scoring.py`
-11. `metrics.py`
-12. `run_experiment.py`
+6. `batches.py`
+7. `normalization.py`
+8. `model.py`
+9. `train.py`
+10. `enrollment.py`
+11. `scoring.py`
+12. `metrics.py`
+13. `verifier.py`
+14. `run_experiment.py`
 
 Each file will be implemented and tested before work begins on the next file.

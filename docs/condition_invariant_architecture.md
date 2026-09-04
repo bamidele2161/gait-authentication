@@ -18,8 +18,6 @@ A shared LSTM encoder is trained with cross-condition triplets from development 
 
 The word **training** can refer to two different activities, so this project will use the following terms consistently.
 
-| Term | Meaning | Conditions available |
-|---|---|---|
 | Model development | Teach the general LSTM what identity should look like across conditions | All four conditions, but development participants only |
 | User enrolment | Create a stored reference for a new, unseen user | ST-control only |
 | Authentication | Compare current walking with the stored reference | Any condition; these are test samples |
