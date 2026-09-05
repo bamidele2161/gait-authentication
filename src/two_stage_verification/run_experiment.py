@@ -16,7 +16,11 @@ from src.condition_augmentation.run_experiment import load_features, split_devel
 from src.condition_invariant.folds import create_outer_folds
 from src.secure_adaptation.protocol import split_normal_enrollment, split_trusted_session
 from src.secure_adaptation.run_experiment import _balanced_cohort, _fit_verifier
-from src.two_stage_verification.decision import and_decision, select_and_thresholds
+from src.two_stage_verification.decision import (
+    and_decision,
+    select_and_thresholds,
+    select_group_robust_and_thresholds,
+)
 from src.two_stage_verification.features import SPECTRAL_COLS, load_spectral_dataset
 from src.utils import FEATURE_COLS, SESSIONS
 
@@ -69,6 +73,17 @@ def calibrate_two_stage(primary, secondary, positive, negative, target_far):
     pp, ps = paired_scores(primary, secondary, positive)
     np_, ns = paired_scores(primary, secondary, negative)
     return select_and_thresholds(pp, ps, np_, ns, target_far)
+
+
+def calibrate_group_robust(primary, secondary, positive, negative, target_far):
+    """Calibrate against the worst development impostor, not pooled scores."""
+    pp, ps = paired_scores(primary, secondary, positive)
+    np_, ns = paired_scores(primary, secondary, negative)
+    return select_group_robust_and_thresholds(
+        pp, ps, np_, ns,
+        negative.participant_id.astype(str).to_numpy(),
+        target_far,
+    )
 
 
 def evaluate_two_stage(primary, secondary, thresholds, claimed_id, probes):
@@ -180,9 +195,37 @@ def run_fold(fold_number=1, update_seconds=30.0, calibration_seconds=20.0,
             joblib.dump(primary, model_dir / f"{claimed_id}_{condition}_primary.joblib")
             joblib.dump(secondary, model_dir / f"{claimed_id}_{condition}_secondary.joblib")
 
+            robust = calibrate_group_robust(
+                primary, secondary, calibration,
+                condition_validation[condition], target_far
+            )
+            robust_frr, robust_far, robust_rows = evaluate_two_stage(
+                primary, secondary, robust[:2], claimed_id, probes
+            )
+            metrics.append({
+                "claimed_participant_id": claimed_id,
+                "condition": condition,
+                "method": "two_stage_group_robust",
+                "frr": robust_frr,
+                "far": robust_far,
+                "calibration_frr": robust[2],
+                "calibration_far": robust[3],
+                "calibration_worst_group_far": robust[4],
+                "update_seconds": update_seconds,
+                "target_far": target_far,
+            })
+            for row in robust_rows:
+                scores.append({
+                    "fold": fold_number,
+                    "claimed_participant_id": claimed_id,
+                    "condition": condition,
+                    "method": "two_stage_group_robust",
+                    **row,
+                })
+
     metrics = pd.DataFrame(metrics)
     scores = pd.DataFrame(scores)
-    summary = metrics.groupby("condition")[["frr", "far"]].agg(["mean", "std"])
+    summary = metrics.groupby(["condition", "method"])[["frr", "far"]].agg(["mean", "std"])
     metrics.to_csv(result_dir / "participant_metrics.csv", index=False)
     scores.to_csv(result_dir / "evaluation_scores.csv", index=False)
     summary.to_csv(result_dir / "macro_summary.csv")
