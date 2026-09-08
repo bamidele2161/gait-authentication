@@ -1,0 +1,39 @@
+{
+  "development": [
+    "sub_02",
+    "sub_03",
+    "sub_05",
+    "sub_07",
+    "sub_08",
+    "sub_09",
+    "sub_11",
+    "sub_12",
+    "sub_13",
+    "sub_15",
+    "sub_17",
+    "sub_18"
+  ],
+  "evaluation": [
+    "sub_01",
+    "sub_06",
+    "sub_10",
+    "sub_14"
+  ],
+  "shared_threshold": 0.2688579559326172,
+  "development_frr": 0.0,
+  "development_far": 0.0,
+  "config": {
+    "seed": 42,
+    "epochs": 40,
+    "patience": 7,
+    "learning_rate": 0.0003,
+    "weight_decay": 0.0001,
+    "embedding_size": 64,
+    "identities_per_batch": 8,
+    "samples_per_condition": 2,
+    "batches_per_epoch": 100,
+    "margin": 0.2,
+    "fusion_window": 30,
+    "rotation_degrees": 12.0
+  }
+}
