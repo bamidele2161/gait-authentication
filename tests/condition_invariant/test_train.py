@@ -63,6 +63,7 @@ def test_train_encoder_returns_losses_and_best_model() -> None:
     assert result.best_epoch in (1, 2)
     assert all(np.isfinite(epoch.training_loss) for epoch in result.history)
     assert all(np.isfinite(epoch.validation_loss) for epoch in result.history)
+    assert all(np.isfinite(epoch.training_condition_loss) for epoch in result.history)
     assert result.model.training is False
     with torch.no_grad():
         embedding = result.model(torch.randn(1, 256, 6))
@@ -109,3 +110,5 @@ def test_training_settings_are_validated() -> None:
         TrainingConfig(learning_rate=0.0)
     with pytest.raises(ValueError, match="contrastive_temperature must be positive"):
         TrainingConfig(contrastive_temperature=0.0)
+    with pytest.raises(ValueError, match="condition_adversarial_weight"):
+        TrainingConfig(condition_adversarial_weight=-0.1)

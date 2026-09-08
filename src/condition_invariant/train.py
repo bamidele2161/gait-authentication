@@ -13,6 +13,7 @@ from src.condition_invariant.batches import IdentityConditionBatch, sample_ident
 from src.condition_invariant.enrollment import create_user_template
 from src.condition_invariant.metrics import select_threshold_from_distances
 from src.condition_invariant.model import (
+    DevelopmentConditionClassifier,
     DevelopmentIdentityClassifier,
     GaitEncoder,
     supervised_contrastive_loss,
@@ -31,6 +32,7 @@ class TrainingConfig:
     learning_rate: float = 1e-3
     contrastive_temperature: float = 0.1
     classification_weight: float = 0.5
+    condition_adversarial_weight: float = 0.2
     participants_per_batch: int = 8
     windows_per_condition: int = 2
     batches_per_epoch: int = 100
@@ -52,6 +54,8 @@ class TrainingConfig:
             raise ValueError("contrastive_temperature must be positive")
         if self.classification_weight < 0:
             raise ValueError("classification_weight must be non-negative")
+        if self.condition_adversarial_weight < 0:
+            raise ValueError("condition_adversarial_weight must be non-negative")
         if self.participants_per_batch < 2:
             raise ValueError("participants_per_batch must be at least 2")
         if self.windows_per_condition < 1:
@@ -74,6 +78,7 @@ class EpochResult:
     training_loss: float
     training_contrastive_loss: float
     training_classification_loss: float
+    training_condition_loss: float
     validation_loss: float
     validation_frr: float
     validation_far: float
@@ -109,20 +114,34 @@ def _check_development_partitions(learning_windows, validation_windows) -> None:
 def _batch_tensors(batch, normalizer, device):
     signals = np.stack([normalizer.transform(window.signal) for window in batch.windows])
     labels = torch.tensor(batch.identity_labels, dtype=torch.long, device=device)
-    return torch.from_numpy(signals).to(device), labels
+    condition_to_label = {
+        condition: label for label, condition in enumerate((
+            "st_control", "st_fatigue", "dt_control", "dt_fatigue"
+        ))
+    }
+    conditions = torch.tensor(
+        [condition_to_label[window.condition] for window in batch.windows],
+        dtype=torch.long,
+        device=device,
+    )
+    return torch.from_numpy(signals).to(device), labels, conditions
 
 
-def _run_batches(encoder, classifier, batches, normalizer, config, device, optimizer):
-    """Return mean total, triplet, and classification loss."""
+def _run_batches(
+    encoder, classifier, condition_classifier, batches, normalizer, config,
+    device, optimizer, reversal_strength,
+):
+    """Return total, identity-metric, identity and condition losses."""
 
     is_training = optimizer is not None
     encoder.train(is_training)
     classifier.train(is_training)
-    total_sum = triplet_sum = classification_sum = 0.0
+    condition_classifier.train(is_training)
+    total_sum = triplet_sum = classification_sum = condition_sum = 0.0
     context = torch.enable_grad() if is_training else torch.no_grad()
     with context:
         for batch in batches:
-            windows, labels = _batch_tensors(batch, normalizer, device)
+            windows, labels, condition_labels = _batch_tensors(batch, normalizer, device)
             if optimizer is not None:
                 optimizer.zero_grad()
             embeddings = encoder(windows)
@@ -130,15 +149,28 @@ def _run_batches(encoder, classifier, batches, normalizer, config, device, optim
                 embeddings, labels, config.contrastive_temperature
             )
             identity_loss = F.cross_entropy(classifier(embeddings), labels)
-            loss = metric_loss + config.classification_weight * identity_loss
+            condition_loss = F.cross_entropy(
+                condition_classifier(embeddings, reversal_strength), condition_labels
+            )
+            loss = (
+                metric_loss
+                + config.classification_weight * identity_loss
+                + config.condition_adversarial_weight * condition_loss
+            )
             if optimizer is not None:
                 loss.backward()
                 optimizer.step()
             total_sum += float(loss.detach())
             triplet_sum += float(metric_loss.detach())
             classification_sum += float(identity_loss.detach())
+            condition_sum += float(condition_loss.detach())
     count = len(batches)
-    return total_sum / count, triplet_sum / count, classification_sum / count
+    return (
+        total_sum / count,
+        triplet_sum / count,
+        classification_sum / count,
+        condition_sum / count,
+    )
 
 
 def _validation_operating_point(encoder, normalizer, learning_windows, validation_windows, participants, config):
@@ -184,8 +216,16 @@ def train_encoder(learning_windows, validation_windows, config=TrainingConfig(),
 
     encoder = GaitEncoder(config.hidden_size, config.embedding_size, config.dropout_probability).to(selected_device)
     classifier = DevelopmentIdentityClassifier(config.embedding_size, len(participants)).to(selected_device)
+    condition_classifier = DevelopmentConditionClassifier(
+        config.embedding_size, 4
+    ).to(selected_device)
     optimizer = torch.optim.Adam(
-        (*encoder.parameters(), *classifier.parameters()), lr=config.learning_rate
+        (
+            *encoder.parameters(),
+            *classifier.parameters(),
+            *condition_classifier.parameters(),
+        ),
+        lr=config.learning_rate,
     )
     validation_batches = sample_identity_condition_batches(
         validation_index, identity_to_label, config.seed + 1_000_000,
@@ -203,17 +243,23 @@ def train_encoder(learning_windows, validation_windows, config=TrainingConfig(),
             learning_index, identity_to_label, config.seed + epoch,
             config.batches_per_epoch, config.participants_per_batch, config.windows_per_condition,
         )
-        training_loss, metric_loss, identity_loss = _run_batches(
-            encoder, classifier, learning_batches, normalizer, config, selected_device, optimizer
+        # Introduce condition confusion gradually so identity structure is learned
+        # before the adversary becomes fully influential.
+        reversal_strength = min(1.0, epoch / max(1, config.epochs // 2))
+        training_loss, metric_loss, identity_loss, condition_loss = _run_batches(
+            encoder, classifier, condition_classifier, learning_batches,
+            normalizer, config, selected_device, optimizer, reversal_strength,
         )
-        validation_loss, _, _ = _run_batches(
-            encoder, classifier, validation_batches, normalizer, config, selected_device, None
+        validation_loss, _, _, _ = _run_batches(
+            encoder, classifier, condition_classifier, validation_batches,
+            normalizer, config, selected_device, None, 0.0,
         )
         validation_frr, validation_far, validation_threshold = _validation_operating_point(
             encoder, normalizer, learning_windows, validation_windows, participants, config
         )
         history.append(EpochResult(
-            epoch, training_loss, metric_loss, identity_loss, validation_loss,
+            epoch, training_loss, metric_loss, identity_loss, condition_loss,
+            validation_loss,
             validation_frr, validation_far, validation_threshold,
         ))
         current_key = (validation_frr, validation_far, validation_loss)

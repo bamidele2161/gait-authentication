@@ -479,6 +479,7 @@ def main() -> None:
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--target-far", type=float, default=0.01)
     parser.add_argument("--fusion-window", type=int, default=5)
+    parser.add_argument("--condition-weight", type=float, default=0.2)
     parser.add_argument("--fold", type=int, choices=(1, 2, 3, 4))
     args = parser.parse_args()
 
@@ -487,6 +488,7 @@ def main() -> None:
         epochs=args.epochs,
         patience=args.patience,
         batches_per_epoch=args.batches_per_epoch,
+        condition_adversarial_weight=args.condition_weight,
     )
     experiment = ExperimentConfig(
         training=training,
@@ -495,7 +497,10 @@ def main() -> None:
         selected_fold_index=None if args.fold is None else args.fold - 1,
         fusion_window=args.fusion_window,
     )
-    method_name = f"contrastive_fusion_{args.fusion_window}_verifier"
+    weight_tag = f"{args.condition_weight:g}".replace(".", "p")
+    method_name = (
+        f"unified_adversarial_weight_{weight_tag}_fusion_{args.fusion_window}"
+    )
     output_name = (
         method_name if args.fold is None else f"{method_name}_fold_{args.fold}"
     )

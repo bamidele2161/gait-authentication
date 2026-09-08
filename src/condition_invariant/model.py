@@ -71,6 +71,46 @@ class DevelopmentIdentityClassifier(nn.Module):
         return self.output(embeddings)
 
 
+class _GradientReversal(torch.autograd.Function):
+    """Pass values forward but reverse their gradient during back-propagation."""
+
+    @staticmethod
+    def forward(ctx, values: torch.Tensor, strength: float) -> torch.Tensor:
+        ctx.strength = strength
+        return values.view_as(values)
+
+    @staticmethod
+    def backward(ctx, gradient: torch.Tensor):
+        return -ctx.strength * gradient, None
+
+
+def reverse_gradient(embeddings: torch.Tensor, strength: float = 1.0) -> torch.Tensor:
+    """Make an auxiliary classifier remove, rather than encode, its information."""
+    if strength < 0:
+        raise ValueError("gradient-reversal strength must be non-negative")
+    return _GradientReversal.apply(embeddings, float(strength))
+
+
+class DevelopmentConditionClassifier(nn.Module):
+    """Temporary adversary that discourages condition-specific embeddings."""
+
+    def __init__(self, embedding_size: int, number_of_conditions: int) -> None:
+        super().__init__()
+        if embedding_size < 1:
+            raise ValueError("embedding_size must be positive")
+        if number_of_conditions < 2:
+            raise ValueError("number_of_conditions must be at least 2")
+        self.network = nn.Sequential(
+            nn.Linear(embedding_size, embedding_size),
+            nn.ReLU(),
+            nn.Linear(embedding_size, number_of_conditions),
+        )
+
+    def forward(self, embeddings: torch.Tensor, reversal_strength: float = 1.0):
+        """Predict condition while forcing the encoder to hide that condition."""
+        return self.network(reverse_gradient(embeddings, reversal_strength))
+
+
 def triplet_loss(
     anchor_embedding: torch.Tensor,
     positive_embedding: torch.Tensor,

@@ -4,6 +4,7 @@ import pytest
 import torch
 
 from src.condition_invariant.model import (
+    DevelopmentConditionClassifier,
     DevelopmentIdentityClassifier,
     GaitEncoder,
     batch_hard_triplet_loss,
@@ -100,6 +101,16 @@ def test_development_classifier_returns_one_logit_per_identity() -> None:
     logits = classifier(torch.randn(5, 4))
 
     assert logits.shape == (5, 3)
+
+
+def test_condition_adversary_reverses_encoder_gradient() -> None:
+    classifier = DevelopmentConditionClassifier(embedding_size=4, number_of_conditions=4)
+    embeddings = torch.randn(5, 4, requires_grad=True)
+
+    classifier(embeddings, reversal_strength=0.5).sum().backward()
+
+    assert embeddings.grad is not None
+    assert torch.isfinite(embeddings.grad).all()
 
 
 def test_supervised_contrastive_loss_prefers_separated_identities() -> None:
