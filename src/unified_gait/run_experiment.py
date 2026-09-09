@@ -16,7 +16,10 @@ from src.unified_gait.config import CONDITIONS, MODEL_DIR, RESULT_DIR, Config
 from src.unified_gait.data import (
     chronological_split, enrollment_split, load_dataset, outer_folds,
 )
-from src.unified_gait.model import UnifiedEncoder, batch_hard_triplet_loss
+from src.unified_gait.model import (
+    ConditionClassifier, UnifiedEncoder, batch_hard_triplet_loss,
+    supervised_contrastive_loss,
+)
 
 
 def seed_everything(seed):
@@ -69,9 +72,9 @@ def balanced_batch(learning, config, rng, augment):
     chosen = rng.choice(
         participants, min(config.identities_per_batch, len(participants)), replace=False
     )
-    windows, identities = [], []
+    windows, identities, condition_labels = [], [], []
     for identity, participant in enumerate(chosen):
-        for condition in CONDITIONS:
+        for condition_index, condition in enumerate(CONDITIONS):
             values = learning[participant][condition]
             indices = rng.choice(
                 len(values), config.samples_per_condition,
@@ -79,65 +82,117 @@ def balanced_batch(learning, config, rng, augment):
             )
             windows.extend(values[indices])
             identities.extend([identity] * len(indices))
+            condition_labels.extend([condition_index] * len(indices))
     windows = np.asarray(windows, dtype=np.float32)
     if augment:
         windows = rotate_windows(windows, config.rotation_degrees, rng)
-    return windows, np.asarray(identities, dtype=np.int64)
+    return (
+        windows,
+        np.asarray(identities, dtype=np.int64),
+        np.asarray(condition_labels, dtype=np.int64),
+    )
+
+
+def identity_loss(embeddings, identities, config):
+    if config.objective == "triplet":
+        return batch_hard_triplet_loss(embeddings, identities, config.margin)
+    if config.objective in ("supcon", "supcon_adv"):
+        return supervised_contrastive_loss(
+            embeddings, identities, config.temperature
+        )
+    raise ValueError(f"Unknown training objective: {config.objective}")
 
 
 def train_encoder(learning, validation, config, device):
     seed_everything(config.seed)
     selected_device = torch.device(device)
     model = UnifiedEncoder(config.embedding_size).to(selected_device)
+    condition_classifier = ConditionClassifier(config.embedding_size).to(selected_device)
     mean, std = fit_global_normalizer(learning)
     model.set_normalizer(mean, std)
     optimizer = torch.optim.AdamW(
-        model.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay
+        list(model.parameters()) + list(condition_classifier.parameters()),
+        lr=config.learning_rate, weight_decay=config.weight_decay
     )
     training_rng = np.random.default_rng(config.seed)
     validation_rng = np.random.default_rng(config.seed + 10_000)
-    best_loss, best_state, stale = float("inf"), None, 0
+    best_loss, best_state, best_condition_state, stale = float("inf"), None, None, 0
     history = []
     for epoch in range(1, config.epochs + 1):
         model.train()
-        training_losses = []
+        condition_classifier.train()
+        training_losses, training_correct, training_total = [], 0, 0
         for _ in range(config.batches_per_epoch):
-            windows, identities = balanced_batch(learning, config, training_rng, True)
+            windows, identities, conditions = balanced_batch(
+                learning, config, training_rng, True
+            )
             tensor = torch.as_tensor(windows, device=selected_device)
             labels = torch.as_tensor(identities, device=selected_device)
+            condition_labels = torch.as_tensor(conditions, device=selected_device)
             optimizer.zero_grad()
-            loss = batch_hard_triplet_loss(model(tensor), labels, config.margin)
+            embeddings = model(tensor)
+            loss = identity_loss(embeddings, labels, config)
+            if config.objective == "supcon_adv":
+                logits = condition_classifier(embeddings)
+                loss = loss + config.adversarial_weight * torch.nn.functional.cross_entropy(
+                    logits, condition_labels
+                )
+                training_correct += int((logits.argmax(1) == condition_labels).sum())
+                training_total += len(condition_labels)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
             optimizer.step()
             training_losses.append(float(loss.detach()))
         model.eval()
-        validation_losses = []
+        condition_classifier.eval()
+        validation_losses, condition_correct, condition_total = [], 0, 0
         with torch.no_grad():
             for _ in range(max(10, config.batches_per_epoch // 5)):
-                windows, identities = balanced_batch(
+                windows, identities, conditions = balanced_batch(
                     validation, config, validation_rng, False
                 )
-                validation_losses.append(float(batch_hard_triplet_loss(
-                    model(torch.as_tensor(windows, device=selected_device)),
-                    torch.as_tensor(identities, device=selected_device), config.margin,
+                embeddings = model(torch.as_tensor(windows, device=selected_device))
+                validation_losses.append(float(identity_loss(
+                    embeddings, torch.as_tensor(identities, device=selected_device), config,
                 )))
+                if config.objective == "supcon_adv":
+                    condition_labels = torch.as_tensor(conditions, device=selected_device)
+                    logits = condition_classifier.network(embeddings)
+                    condition_correct += int((logits.argmax(1) == condition_labels).sum())
+                    condition_total += len(condition_labels)
         training_loss = float(np.mean(training_losses))
         validation_loss = float(np.mean(validation_losses))
-        history.append((epoch, training_loss, validation_loss))
+        train_condition_accuracy = (
+            training_correct / training_total if training_total else float("nan")
+        )
+        validation_condition_accuracy = (
+            condition_correct / condition_total if condition_total else float("nan")
+        )
+        history.append((epoch, training_loss, validation_loss,
+                        train_condition_accuracy, validation_condition_accuracy))
         print(
             f"  epoch={epoch:02d} train_loss={training_loss:.5f} "
             f"validation_loss={validation_loss:.5f}"
+            + (f" condition_accuracy={validation_condition_accuracy:.2%}"
+               if condition_total else "")
         )
         if validation_loss < best_loss - 1e-5:
-            best_loss, best_state, stale = validation_loss, deepcopy(model.state_dict()), 0
+            best_loss = validation_loss
+            best_state = deepcopy(model.state_dict())
+            best_condition_state = deepcopy(condition_classifier.state_dict())
+            stale = 0
         else:
             stale += 1
             if stale >= config.patience:
                 break
     model.load_state_dict(best_state)
+    condition_classifier.load_state_dict(best_condition_state)
     model.eval()
-    return model, pd.DataFrame(history, columns=("epoch", "train_loss", "validation_loss"))
+    return model, condition_classifier, pd.DataFrame(
+        history,
+        columns=("epoch", "train_loss", "validation_loss",
+                 "train_condition_accuracy", "validation_condition_accuracy"),
+    )
 
 
 def encode(model, windows, device, batch_size=512):
@@ -243,7 +298,9 @@ def run_fold(fold_number, config, device="cpu"):
                 dataset[person][condition].windows
             )
     print(f"Fold {fold_number}/4: development={','.join(development)} evaluation={','.join(evaluation)}")
-    model, history = train_encoder(learning, validation, fold_config, device)
+    model, condition_classifier, history = train_encoder(
+        learning, validation, fold_config, device
+    )
     threshold, development_frr, development_far = select_shared_threshold(
         model, learning, validation, fold_config, device
     )
@@ -254,8 +311,12 @@ def run_fold(fold_number, config, device="cpu"):
     metrics = evaluate(
         model, dataset, evaluation, threshold, fold_config, fold_number, device
     )
-    output = RESULT_DIR / f"fold_{fold_number}"
-    model_dir = MODEL_DIR / f"fold_{fold_number}"
+    if fold_config.objective == "triplet":
+        output = RESULT_DIR / f"fold_{fold_number}"
+        model_dir = MODEL_DIR / f"fold_{fold_number}"
+    else:
+        output = RESULT_DIR / fold_config.objective / f"fold_{fold_number}"
+        model_dir = MODEL_DIR / fold_config.objective / f"fold_{fold_number}"
     output.mkdir(parents=True, exist_ok=True)
     model_dir.mkdir(parents=True, exist_ok=True)
     history.to_csv(output / "training_history.csv", index=False)
@@ -263,6 +324,8 @@ def run_fold(fold_number, config, device="cpu"):
     summary = metrics.groupby("condition")[["frr", "far"]].agg(["mean", "std"])
     summary.to_csv(output / "summary.csv")
     torch.save({"state_dict": model.state_dict(), "config": asdict(fold_config)}, model_dir / "encoder.pt")
+    if fold_config.objective == "supcon_adv":
+        torch.save(condition_classifier.state_dict(), model_dir / "condition_classifier.pt")
     (output / "protocol.json").write_text(json.dumps({
         "development": development, "evaluation": evaluation,
         "shared_threshold": threshold, "development_frr": development_frr,
@@ -280,10 +343,17 @@ def main():
     parser.add_argument("--batches-per-epoch", type=int, default=100)
     parser.add_argument("--fusion-window", type=int, default=30)
     parser.add_argument("--device", default="cpu")
+    parser.add_argument(
+        "--objective", choices=("triplet", "supcon", "supcon_adv"), default="triplet"
+    )
+    parser.add_argument("--temperature", type=float, default=0.07)
+    parser.add_argument("--adversarial-weight", type=float, default=0.1)
     args = parser.parse_args()
     config = Config(
         epochs=args.epochs, patience=args.patience,
         batches_per_epoch=args.batches_per_epoch, fusion_window=args.fusion_window,
+        objective=args.objective, temperature=args.temperature,
+        adversarial_weight=args.adversarial_weight,
     )
     run_fold(args.fold, config, args.device)
 

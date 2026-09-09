@@ -1,0 +1,9 @@
+{
+  "parameters": {
+    "top_k": null
+  },
+  "threshold": -2.2416297068670166,
+  "frr": 0.0,
+  "far": 0.0,
+  "objective": 0.0
+}

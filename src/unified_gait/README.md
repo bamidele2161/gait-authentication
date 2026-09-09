@@ -21,3 +21,30 @@ identity. Batch-hard triplet loss uses the most separated same-person pair and
 the closest different-person pair, directly optimizing the failure we observed.
 
 The experiment remains an ablation until all four folds have been evaluated.
+
+## Objective ablations
+
+`--objective triplet` uses the original hardest-positive/hardest-negative loss.
+`--objective supcon` uses every other same-identity window in the balanced batch
+as a positive, including positives across all four conditions. The architecture
+and evaluation protocol are otherwise identical, and SupCon artifacts are saved
+under separate `supcon/fold_*` directories.
+
+`--objective supcon_adv` adds one condition classifier through a gradient
+reversal layer. The classifier learns to recognise ST-control, ST-fatigue,
+DT-control, and DT-fatigue, while the reversed gradient tells the encoder to
+remove condition information. Four-class chance accuracy is 25%. The verifier
+still uses one encoder, normal ST-control enrollment, cosine distance, and one
+shared development threshold.
+
+```bash
+python3 -m src.unified_gait.run_experiment \
+  --fold 1 \
+  --objective supcon_adv \
+  --temperature 0.07 \
+  --adversarial-weight 0.1 \
+  --epochs 40 \
+  --patience 7 \
+  --batches-per-epoch 100 \
+  --fusion-window 30
+```

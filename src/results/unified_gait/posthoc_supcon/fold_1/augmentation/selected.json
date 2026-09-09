@@ -1,0 +1,9 @@
+{
+  "parameters": {
+    "shift_scale": 0.25
+  },
+  "threshold": 0.08395222539836095,
+  "frr": 0.0,
+  "far": 0.0,
+  "objective": 0.0
+}

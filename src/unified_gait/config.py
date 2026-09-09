@@ -23,5 +23,8 @@ class Config:
     samples_per_condition: int = 2
     batches_per_epoch: int = 100
     margin: float = 0.2
+    objective: str = "triplet"
+    temperature: float = 0.07
+    adversarial_weight: float = 0.1
     fusion_window: int = 30
     rotation_degrees: float = 12.0

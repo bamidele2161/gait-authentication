@@ -1,0 +1,12 @@
+{
+  "parameters": {
+    "rank": 1,
+    "quantile": 0.5,
+    "scale": 0.5,
+    "top_k": null
+  },
+  "threshold": -2.2349659557406287,
+  "frr": 0.0,
+  "far": 0.0,
+  "objective": 0.0
+}

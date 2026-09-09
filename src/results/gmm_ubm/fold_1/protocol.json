@@ -1,0 +1,31 @@
+{
+  "development": [
+    "sub_02",
+    "sub_03",
+    "sub_05",
+    "sub_07",
+    "sub_08",
+    "sub_09",
+    "sub_11",
+    "sub_12",
+    "sub_13",
+    "sub_15",
+    "sub_17",
+    "sub_18"
+  ],
+  "evaluation": [
+    "sub_01",
+    "sub_06",
+    "sub_10",
+    "sub_14"
+  ],
+  "config": {
+    "components": 8,
+    "relevance_factor": 8.0,
+    "pca_components": 30,
+    "maximum_windows_per_group": 120,
+    "target_far": 0.01,
+    "fusion_window": 30,
+    "seed": 42
+  }
+}

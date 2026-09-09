@@ -2,7 +2,10 @@ import numpy as np
 import torch
 
 from src.unified_gait.data import chronological_split, enrollment_split, outer_folds
-from src.unified_gait.model import UnifiedEncoder, batch_hard_triplet_loss
+from src.unified_gait.model import (
+    ConditionClassifier, UnifiedEncoder, batch_hard_triplet_loss,
+    supervised_contrastive_loss,
+)
 from src.unified_gait.run_experiment import (
     causal_fusion, cosine_distances, eer_threshold, fit_global_normalizer,
     rotate_windows,
@@ -35,11 +38,36 @@ def test_encoder_produces_unit_embeddings():
     torch.testing.assert_close(torch.linalg.vector_norm(output, dim=1), torch.ones(4))
 
 
+def test_condition_classifier_reverses_encoder_gradient():
+    embeddings = torch.randn(8, 64, requires_grad=True)
+    classifier = ConditionClassifier()
+    classifier(embeddings).sum().backward()
+    reversed_gradient = embeddings.grad.clone()
+
+    embeddings.grad.zero_()
+    classifier.network(embeddings).sum().backward()
+    direct_gradient = embeddings.grad.clone()
+    torch.testing.assert_close(reversed_gradient, -direct_gradient)
+
+
 def test_batch_hard_loss_rewards_identity_separation():
     identities = torch.tensor([0, 0, 1, 1])
     good = torch.tensor([[1.0, 0.0], [.99, .01], [0.0, 1.0], [.01, .99]])
     bad = torch.tensor([[1.0, 0.0], [0.0, 1.0], [.99, .01], [.01, .99]])
     assert batch_hard_triplet_loss(good, identities) < batch_hard_triplet_loss(bad, identities)
+
+
+def test_supcon_rewards_all_same_identity_pairs():
+    identities = torch.tensor([0, 0, 1, 1])
+    good = torch.nn.functional.normalize(torch.tensor([
+        [1.0, 0.0], [.99, .01], [0.0, 1.0], [.01, .99]
+    ]), dim=1)
+    bad = torch.nn.functional.normalize(torch.tensor([
+        [1.0, 0.0], [0.0, 1.0], [.99, .01], [.01, .99]
+    ]), dim=1)
+    assert supervised_contrastive_loss(good, identities) < supervised_contrastive_loss(
+        bad, identities
+    )
 
 
 def test_rotation_preserves_vector_magnitude():

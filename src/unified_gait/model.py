@@ -5,6 +5,22 @@ from torch import nn
 from torch.nn import functional as F
 
 
+class _GradientReversal(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, values, strength):
+        ctx.strength = strength
+        return values.view_as(values)
+
+    @staticmethod
+    def backward(ctx, gradient):
+        return -ctx.strength * gradient, None
+
+
+def reverse_gradient(values, strength=1.0):
+    """Keep the forward values, but reverse their encoder-training gradient."""
+    return _GradientReversal.apply(values, strength)
+
+
 class UnifiedEncoder(nn.Module):
     def __init__(self, embedding_size=64):
         super().__init__()
@@ -45,6 +61,20 @@ class UnifiedEncoder(nn.Module):
         return F.normalize(self.projection(pooled), dim=1)
 
 
+class ConditionClassifier(nn.Module):
+    """Condition head used to discourage condition information in embeddings."""
+
+    def __init__(self, embedding_size=64, condition_count=4):
+        super().__init__()
+        self.network = nn.Sequential(
+            nn.Linear(embedding_size, 32), nn.GELU(),
+            nn.Linear(32, condition_count),
+        )
+
+    def forward(self, embeddings, reversal_strength=1.0):
+        return self.network(reverse_gradient(embeddings, reversal_strength))
+
+
 def batch_hard_triplet_loss(embeddings, identities, margin=0.2):
     """Pull every same-person condition together and push other people away."""
     distances = torch.cdist(embeddings, embeddings)
@@ -56,3 +86,29 @@ def batch_hard_triplet_loss(embeddings, identities, margin=0.2):
     hardest_negative = distances.masked_fill(~negatives, torch.inf).min(1).values
     valid = torch.isfinite(hardest_positive) & torch.isfinite(hardest_negative)
     return F.relu(hardest_positive[valid] - hardest_negative[valid] + margin).mean()
+
+
+def supervised_contrastive_loss(embeddings, identities, temperature=0.07):
+    """Use every other same-identity sample in the batch as a positive."""
+    if temperature <= 0:
+        raise ValueError("temperature must be positive")
+    count = len(embeddings)
+    identity_matches = identities[:, None].eq(identities[None, :])
+    self_mask = torch.eye(count, dtype=torch.bool, device=embeddings.device)
+    positive_mask = identity_matches & ~self_mask
+    if not torch.all(positive_mask.any(dim=1)):
+        raise ValueError("every anchor requires another same-identity sample")
+
+    logits = embeddings @ embeddings.T / temperature
+    # Subtracting each row maximum improves numerical stability without
+    # changing the softmax probability.
+    logits = logits - logits.max(dim=1, keepdim=True).values.detach()
+    exp_logits = torch.exp(logits).masked_fill(self_mask, 0.0)
+    log_probability = logits - torch.log(
+        exp_logits.sum(dim=1, keepdim=True).clamp_min(1e-12)
+    )
+    mean_positive_log_probability = (
+        log_probability.masked_fill(~positive_mask, 0.0).sum(dim=1)
+        / positive_mask.sum(dim=1)
+    )
+    return -mean_positive_log_probability.mean()
