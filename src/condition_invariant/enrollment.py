@@ -62,16 +62,16 @@ def split_evaluation_st_control(
     if not windows:
         raise ValueError("Cannot split an empty ST-control recording")
 
-    ordered = tuple(sorted(windows, key=lambda w: w.start_sample))
-    participants = {w.participant_id for w in ordered}
-    conditions   = {w.condition for w in ordered}
+    ordered = tuple(sorted(windows, key=lambda window: window.start_sample))
+    participants = {window.participant_id for window in ordered}
+    conditions = {window.condition for window in ordered}
     if len(participants) != 1 or conditions != {"st_control"}:
         raise ValueError("Evaluation split requires one participant's ST-control data")
 
     enrollment_end = int(len(ordered) * enrollment_fraction)
-    test_start     = int(len(ordered) * test_start_fraction) + 1
+    test_start = int(len(ordered) * test_start_fraction) + 1
     enrollment_windows = ordered[:enrollment_end]
-    test_windows       = ordered[test_start:]
+    test_windows = ordered[test_start:]
     if not enrollment_windows or not test_windows:
         raise ValueError("Split produced empty enrolment or test data")
     if (
@@ -85,7 +85,6 @@ def split_evaluation_st_control(
         test_windows=test_windows,
     )
 
-
 def _validate_enrollment_windows(
     participant_id: str,
     windows: tuple[GaitWindow, ...],
@@ -94,15 +93,15 @@ def _validate_enrollment_windows(
 
     if not windows:
         raise ValueError("Cannot create a template without enrolment windows")
-    if any(w.participant_id != participant_id for w in windows):
+    if any(window.participant_id != participant_id for window in windows):
         raise ValueError("Every enrolment window must belong to the claimed participant")
-    if any(w.condition != "st_control" for w in windows):
+    if any(window.condition != "st_control" for window in windows):
         raise ValueError("Unseen-user enrolment may use ST-control windows only")
 
-    identities = [window_identity(w) for w in windows]
+    identities = [window_identity(window) for window in windows]
     if len(set(identities)) != len(identities):
         raise ValueError("Duplicate enrolment window found")
-    start_samples = [w.start_sample for w in windows]
+    start_samples = [window.start_sample for window in windows]
     if start_samples != sorted(start_samples):
         raise ValueError("Enrolment windows must be in chronological order")
 
@@ -114,17 +113,7 @@ def create_user_template(
     normalizer: ChannelNormalizer,
     batch_size: int = 64,
 ) -> UserTemplate:
-    """Encode enrolment windows and select the medoid as the user template.
-
-    Why medoid instead of mean?
-    ---------------------------
-    On the unit hypersphere the arithmetic mean is pulled off-centre by
-    outlier embeddings (e.g. windows with sensor artefacts or noisy strides).
-    The medoid — the actual embedding *closest* to the mean — is always a
-    real, valid point on the sphere and is robust to those outliers.  This
-    keeps the template well inside the genuine cluster rather than at a
-    potentially empty average location.
-    """
+    """Encode and average one unseen user's normal-walking windows."""
 
     _validate_enrollment_windows(participant_id, enrollment_windows)
     if batch_size < 1:
@@ -141,22 +130,16 @@ def create_user_template(
         for start in range(0, len(enrollment_windows), batch_size):
             batch = enrollment_windows[start : start + batch_size]
             normalized_signals = np.stack(
-                [normalizer.transform(w.signal) for w in batch]
+                [normalizer.transform(window.signal) for window in batch]
             )
             tensor = torch.from_numpy(normalized_signals).to(device)
             embedding_batches.append(model(tensor))
 
-        embeddings = torch.cat(embedding_batches, dim=0)   # (N, E), unit-norm
-
-        # Compute mean direction and find the closest actual embedding (medoid).
-        mean_direction = embeddings.mean(dim=0)            # (E,)
-        if float(torch.linalg.vector_norm(mean_direction)) <= 1e-12:
+        embeddings = torch.cat(embedding_batches, dim=0)
+        mean_embedding = embeddings.mean(dim=0, keepdim=True)
+        if float(torch.linalg.vector_norm(mean_embedding)) <= 1e-12:
             raise ValueError("Enrolment embeddings cancel to a zero-length template")
-
-        # Squared L2 distance from mean; minimise to find medoid index.
-        dists_sq   = ((embeddings - mean_direction.unsqueeze(0)) ** 2).sum(dim=1)
-        medoid_idx = int(dists_sq.argmin())
-        template_embedding = embeddings[medoid_idx]        # already unit-norm
+        template_embedding = F.normalize(mean_embedding, p=2, dim=1)[0]
 
     return UserTemplate(
         participant_id=participant_id,

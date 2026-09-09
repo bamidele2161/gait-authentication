@@ -13,7 +13,28 @@ It is intentionally separate from the existing statistical-feature RBF-SVM basel
 - Keep evaluated participants out of encoder training, normalization, validation, and threshold selection.
 - Enrol evaluated participants with ST-control only.
 
-## Planned implementation order
+## Implemented architecture
+
+1. Split participants into 12 development and 4 evaluation identities per fold.
+2. Split every development recording chronologically into learning and validation.
+3. Fit six-channel normalization on development-learning windows only.
+4. Train one shared 64-unit LSTM encoder on balanced identity-condition batches.
+5. Use supervised contrastive loss to group the same identity, an auxiliary
+   identity classifier to preserve identity information, and a gradient-reversal
+   condition classifier to discourage condition-specific information.
+6. Convert each 2-second window into one L2-normalized 64-D embedding.
+7. Enrol each unseen evaluation user using ST-control windows only; average and
+   L2-normalize those embeddings to create one template.
+8. Compare every probe with the claimed template using Euclidean distance.
+   Because embeddings have unit length, this gives the same ordering as cosine
+   distance.
+9. Select one shared threshold from development-validation scores, freeze it,
+   and apply it unchanged to all four evaluation conditions.
+
+There is no per-user SVM, condition-specific model, condition-specific template,
+or evaluation-time retraining in this method.
+
+## Source-file order
 
 1. `config.py`
 2. `records.py`

@@ -212,7 +212,7 @@ def _participant_metrics(
 def _score_rows(
     scores: tuple[ComparisonScore, ...],
     fold_index: int,
-    threshold: float,
+    thresholds: float,
 ) -> list[dict[str, object]]:
     """Create reproducible, ISO-friendly window-level score rows."""
 
@@ -226,8 +226,8 @@ def _score_rows(
             "start_sample":           s.start_sample,
             "is_genuine":             s.is_genuine,
             "distance":               s.distance,
-            "threshold":              threshold,
-            "accepted":               s.distance <= threshold,
+            "threshold":              thresholds,
+            "accepted":               s.distance <= thresholds,
         }
         for s in scores
     ]
@@ -446,11 +446,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Run cross-session condition-invariant gait authentication"
     )
-    parser.add_argument("--epochs",            type=int,   default=80)
-    parser.add_argument("--patience",          type=int,   default=15)
+    parser.add_argument("--epochs",            type=int,   default=40)
+    parser.add_argument("--patience",          type=int,   default=7)
     parser.add_argument("--batches-per-epoch", type=int,   default=100)
     parser.add_argument("--device",            default="cpu")
     parser.add_argument("--target-far",        type=float, default=0.01)
+    parser.add_argument("--condition-weight",  type=float, default=0.2)
     parser.add_argument("--fold",              type=int,   choices=(1, 2, 3, 4))
     args = parser.parse_args()
 
@@ -459,6 +460,7 @@ def main() -> None:
         epochs=args.epochs,
         patience=args.patience,
         batches_per_epoch=args.batches_per_epoch,
+        condition_adversarial_weight=args.condition_weight,
     )
     experiment = ExperimentConfig(
         training=training,
@@ -466,7 +468,7 @@ def main() -> None:
         device=args.device,
         selected_fold_index=None if args.fold is None else args.fold - 1,
     )
-    method_name = "cross_session_bidir_attention"
+    method_name = "condition_invariant_shared_threshold"
     output_name = (
         method_name if args.fold is None else f"{method_name}_fold_{args.fold}"
     )
