@@ -3,12 +3,12 @@
 Evaluation path (cross-session design)
 ---------------------------------------
 - Enrolment  : ST-control windows only.
-- Test probes : all four conditions (ST-control held-out, ST-fatigue,
-                DT-control, DT-fatigue).
+- Training    : session-1 ST-control and ST-fatigue only.
+- Test probes : session-2 DT-control and DT-fatigue only.
 - Scoring     : cosine / Euclidean distance from the enrollment template
                 (unit-sphere embeddings → equivalent).
-- Threshold   : one global threshold calibrated on development-validation
-                probes from **all four conditions** (see train.py).
+- Threshold   : one global threshold calibrated on held-out session-1
+                development probes only.
 - No per-user SVM verifier is used; the frozen encoder + global threshold
   is the complete authenticator.
 """
@@ -25,7 +25,7 @@ import pandas as pd
 import torch
 
 from src.condition_invariant.config import (
-    CONDITIONS,
+    EVALUATION_CONDITIONS,
     MODELS_DIR,
     RESULTS_DIR,
     ensure_output_directories,
@@ -125,6 +125,7 @@ def _score_population(
     model: torch.nn.Module,
     normalizer: ChannelNormalizer,
     batch_size: int,
+    conditions: tuple[str, ...],
 ) -> tuple[ComparisonScore, ...]:
     """Compare every participant's probes with every claimed template.
 
@@ -135,7 +136,7 @@ def _score_population(
     scores = []
     for claimed_participant in participants:
         template = templates[claimed_participant]
-        for condition in CONDITIONS:
+        for condition in conditions:
             if condition not in probes:
                 raise ValueError(f"Missing probe condition: {condition}")
             for probe_participant in participants:
@@ -166,14 +167,12 @@ def _evaluation_inputs(
     """Prepare unseen-user enrolment and probe data.
 
     Enrolment : ST-control chronological early portion only.
-    Probes    : all four conditions.
-                - ST-control: chronologically held-out late portion.
-                - Other three conditions: full recording.
+    Probes    : session-2 DT-control and DT-fatigue only.
     """
 
     enrollment_windows: dict[str, tuple[GaitWindow, ...]] = {}
     probes: dict[str, dict[str, tuple[GaitWindow, ...]]] = {
-        condition: {} for condition in CONDITIONS
+        condition: {} for condition in EVALUATION_CONDITIONS
     }
     for pid in fold.evaluation_participants:
         participant_data = dataset[pid]
@@ -183,8 +182,7 @@ def _evaluation_inputs(
             test_start_fraction=config.baseline_test_start_fraction,
         )
         enrollment_windows[pid]       = split.enrollment_windows
-        probes["st_control"][pid]     = split.test_windows
-        for condition in CONDITIONS[1:]:
+        for condition in EVALUATION_CONDITIONS:
             probes[condition][pid] = tuple(
                 sorted(participant_data[condition], key=lambda w: w.start_sample)
             )
@@ -200,7 +198,7 @@ def _participant_metrics(
 
     results = []
     for pid in participants:
-        for condition in CONDITIONS:
+        for condition in EVALUATION_CONDITIONS:
             selected = tuple(
                 s for s in scores
                 if s.claimed_participant_id == pid and s.condition == condition
@@ -329,8 +327,7 @@ def run_experiment(
             device=config.device,
         )
 
-        # ── 2. Calibrate global threshold (all 4 conditions) ─────────────
-        #    Use development-validation windows, grouped by condition/participant.
+        # ── 2. Calibrate on held-out session-1 development windows only ──
         learning_groups   = _group_windows(development.learning_windows)
         validation_groups = _group_windows(development.validation_windows)
 
@@ -342,7 +339,7 @@ def run_experiment(
             normalizer=training.normalizer,
             batch_size=config.scoring_batch_size,
         )
-        # Score all 4 condition validation probes against those templates.
+        # DT data is deliberately absent from threshold calibration.
         threshold_scores = _score_population(
             participants=fold.development_participants,
             templates=development_templates,
@@ -350,6 +347,7 @@ def run_experiment(
             model=training.model,
             normalizer=training.normalizer,
             batch_size=config.scoring_batch_size,
+            conditions=("st_control", "st_fatigue"),
         )
         threshold = select_global_threshold(
             threshold_scores,
@@ -357,7 +355,7 @@ def run_experiment(
             target_far=config.target_far,
         )
 
-        # ── 3 & 4. Enrol evaluation participants; score all conditions ────
+        # ── 3 & 4. Enrol from ST-control; test on session-2 DT only ───────
         enrollment_windows, evaluation_probes = _evaluation_inputs(
             dataset, fold, config
         )
@@ -375,6 +373,7 @@ def run_experiment(
             model=training.model,
             normalizer=training.normalizer,
             batch_size=config.scoring_batch_size,
+            conditions=EVALUATION_CONDITIONS,
         )
 
         # ── 5. Apply threshold, compute per-participant metrics ───────────
@@ -410,7 +409,7 @@ def run_experiment(
         macro_average_rates(
             tuple(r for r in rates if r.condition == condition)
         )
-        for condition in CONDITIONS
+        for condition in EVALUATION_CONDITIONS
     )
 
     pd.DataFrame(all_threshold_scores).to_csv(
@@ -449,9 +448,10 @@ def main() -> None:
     parser.add_argument("--epochs",            type=int,   default=40)
     parser.add_argument("--patience",          type=int,   default=7)
     parser.add_argument("--batches-per-epoch", type=int,   default=100)
+    parser.add_argument("--triplets-per-batch", type=int, default=64)
+    parser.add_argument("--validation-batches", type=int, default=20)
     parser.add_argument("--device",            default="cpu")
     parser.add_argument("--target-far",        type=float, default=0.01)
-    parser.add_argument("--condition-weight",  type=float, default=0.2)
     parser.add_argument("--fold",              type=int,   choices=(1, 2, 3, 4))
     args = parser.parse_args()
 
@@ -460,7 +460,8 @@ def main() -> None:
         epochs=args.epochs,
         patience=args.patience,
         batches_per_epoch=args.batches_per_epoch,
-        condition_adversarial_weight=args.condition_weight,
+        triplets_per_batch=args.triplets_per_batch,
+        validation_batches=args.validation_batches,
     )
     experiment = ExperimentConfig(
         training=training,

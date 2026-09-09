@@ -29,6 +29,12 @@ CONDITIONS = (
     "dt_fatigue",
 )
 
+# Session 1 supplies representation learning and threshold development.
+TRAINING_CONDITIONS = ("st_control", "st_fatigue")
+
+# Session 2 was recorded seven days later and is final test data only.
+EVALUATION_CONDITIONS = ("dt_control", "dt_fatigue")
+
 # Column order used when src/02_preprocess.py saved each NumPy window.
 SENSOR_CHANNELS = (
     "GyrX",

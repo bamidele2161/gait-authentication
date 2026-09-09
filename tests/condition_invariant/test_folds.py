@@ -174,7 +174,7 @@ def test_prepare_development_data_excludes_evaluation_participant() -> None:
     assert "sub_03" not in used
 
 
-def test_prepare_development_data_includes_every_condition() -> None:
+def test_prepare_development_data_includes_session1_conditions_only() -> None:
     dataset = make_tiny_fold_dataset()
     fold = OuterFold(
         fold_index=0,
@@ -185,8 +185,11 @@ def test_prepare_development_data_includes_every_condition() -> None:
     prepared = prepare_development_fold_data(dataset, fold)
 
     assert {window.condition for window in prepared.learning_windows} == {
-        "st_control", "st_fatigue", "dt_control", "dt_fatigue"
+        "st_control", "st_fatigue"
     }
+    assert not {
+        "dt_control", "dt_fatigue"
+    } & {window.condition for window in prepared.validation_windows}
     assert {window.condition for window in prepared.validation_windows} == {
-        "st_control", "st_fatigue", "dt_control", "dt_fatigue"
+        "st_control", "st_fatigue"
     }

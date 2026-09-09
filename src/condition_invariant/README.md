@@ -16,23 +16,26 @@ It is intentionally separate from the existing statistical-feature RBF-SVM basel
 ## Implemented architecture
 
 1. Split participants into 12 development and 4 evaluation identities per fold.
-2. Split every development recording chronologically into learning and validation.
+2. Use only session-1 ST-control and ST-fatigue from development identities;
+   split those recordings chronologically into learning and validation.
 3. Fit six-channel normalization on development-learning windows only.
-4. Train one shared 64-unit LSTM encoder on balanced identity-condition batches.
-5. Use supervised contrastive loss to group the same identity, an auxiliary
-   identity classifier to preserve identity information, and a gradient-reversal
-   condition classifier to discourage condition-specific information.
+4. Train one shared 64-unit LSTM encoder with explicit triplets: every anchor is
+   ST-control; positives are the same person's ST-control or ST-fatigue; negatives
+   are another person's ST-control or ST-fatigue.
+5. Apply triplet loss so the positive is closer to the anchor than the negative
+   by the configured margin.
 6. Convert each 2-second window into one L2-normalized 64-D embedding.
 7. Enrol each unseen evaluation user using ST-control windows only; average and
    L2-normalize those embeddings to create one template.
 8. Compare every probe with the claimed template using Euclidean distance.
    Because embeddings have unit length, this gives the same ordering as cosine
    distance.
-9. Select one shared threshold from development-validation scores, freeze it,
-   and apply it unchanged to all four evaluation conditions.
+9. Select one shared threshold using session-1 development-validation scores,
+   freeze it, and apply it unchanged to DT-control and DT-fatigue from session 2.
 
-There is no per-user SVM, condition-specific model, condition-specific template,
-or evaluation-time retraining in this method.
+DT-control and DT-fatigue are never used for encoder training, normalization,
+validation, early stopping, or threshold calibration. There is no per-user SVM,
+condition-specific model, condition-specific template, or evaluation-time retraining.
 
 ## Source-file order
 

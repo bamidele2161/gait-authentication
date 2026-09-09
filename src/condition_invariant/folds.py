@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from src.condition_invariant.config import CONDITIONS, WINDOW_SAMPLES
+from src.condition_invariant.config import TRAINING_CONDITIONS, WINDOW_SAMPLES
 from src.condition_invariant.dataset import GaitDataset
 from src.condition_invariant.records import GaitWindow
 
@@ -161,7 +161,7 @@ def prepare_development_fold_data(
     validation_windows = []
     for participant_id in fold.development_participants:
         participant_data = dataset[participant_id]
-        for condition in CONDITIONS:
+        for condition in TRAINING_CONDITIONS:
             if condition not in participant_data:
                 raise ValueError(
                     f"Missing {condition} data for development participant "
