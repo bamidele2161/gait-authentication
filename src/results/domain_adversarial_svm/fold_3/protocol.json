@@ -1,0 +1,39 @@
+{
+  "development": [
+    "sub_01",
+    "sub_02",
+    "sub_05",
+    "sub_06",
+    "sub_07",
+    "sub_09",
+    "sub_10",
+    "sub_11",
+    "sub_13",
+    "sub_14",
+    "sub_15",
+    "sub_18"
+  ],
+  "evaluation": [
+    "sub_03",
+    "sub_08",
+    "sub_12",
+    "sub_17"
+  ],
+  "domain_removal_strength": 0.25,
+  "shared_threshold": -0.8291962761051466,
+  "config": {
+    "seed": 42,
+    "pca_components": 30,
+    "removal_strengths": [
+      0.0,
+      0.25,
+      0.5,
+      0.75,
+      1.0
+    ],
+    "svm_c": 10.0,
+    "maximum_negative_windows_per_group": 40,
+    "fusion_window": 30,
+    "inner_folds": 3
+  }
+}
