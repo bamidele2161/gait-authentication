@@ -1,4 +1,4 @@
-"""Train the session-1 Siamese encoder without exposing session-2 data."""
+"""Train the deeper session-1 encoder with online hard mining."""
 
 from __future__ import annotations
 
@@ -7,24 +7,29 @@ from dataclasses import dataclass
 
 import numpy as np
 import torch
+from torch.nn import functional as F
 
+from src.condition_invariant.batches import sample_session1_batch
 from src.condition_invariant.enrollment import create_user_template
 from src.condition_invariant.metrics import select_threshold_from_distances
-from src.condition_invariant.model import GaitEncoder, triplet_loss
+from src.condition_invariant.model import (
+    DevelopmentIdentityClassifier, GaitEncoder, session1_batch_hard_loss,
+)
 from src.condition_invariant.normalization import ChannelNormalizer, fit_channel_normalizer
 from src.condition_invariant.records import GaitWindow
 from src.condition_invariant.scoring import encode_probe_windows
-from src.condition_invariant.triplets import (
-    build_triplet_index, sample_session1_triplets, window_identity,
-)
+from src.condition_invariant.triplets import build_triplet_index, window_identity
 
 
 @dataclass(frozen=True)
 class TrainingConfig:
     epochs: int = 40
-    learning_rate: float = 1e-3
+    learning_rate: float = 3e-4
+    weight_decay: float = 1e-4
     margin: float = 0.2
-    triplets_per_batch: int = 64
+    identity_loss_weight: float = 0.3
+    participants_per_batch: int = 8
+    windows_per_condition: int = 3
     batches_per_epoch: int = 100
     validation_batches: int = 20
     scoring_batch_size: int = 128
@@ -33,27 +38,25 @@ class TrainingConfig:
     seed: int = 42
     hidden_size: int = 64
     embedding_size: int = 64
-    dropout_probability: float = 0.2
+    dropout_probability: float = 0.25
 
     def __post_init__(self):
-        if self.epochs < 1:
-            raise ValueError("epochs must be at least 1")
-        if self.learning_rate <= 0:
-            raise ValueError("learning_rate must be positive")
-        if self.margin <= 0:
-            raise ValueError("margin must be positive")
-        if self.triplets_per_batch < 1:
-            raise ValueError("triplets_per_batch must be positive")
-        if self.batches_per_epoch < 1 or self.validation_batches < 1:
-            raise ValueError("Training and validation batch counts must be positive")
-        if self.patience < 1:
-            raise ValueError("patience must be at least 1")
+        if self.epochs < 1 or self.batches_per_epoch < 1 or self.validation_batches < 1:
+            raise ValueError("Epoch and batch counts must be positive")
+        if self.learning_rate <= 0 or self.margin <= 0:
+            raise ValueError("learning_rate and margin must be positive")
+        if self.participants_per_batch < 2 or self.windows_per_condition < 2:
+            raise ValueError("A batch needs multiple identities and windows")
+        if self.identity_loss_weight < 0:
+            raise ValueError("identity_loss_weight must be non-negative")
 
 
 @dataclass(frozen=True)
 class EpochResult:
     epoch: int
     training_loss: float
+    training_metric_loss: float
+    training_identity_loss: float
     validation_loss: float
     validation_frr: float
     validation_far: float
@@ -75,70 +78,66 @@ def _check_partitions(learning, validation):
     if not learning or not validation:
         raise ValueError("Learning and validation windows must not be empty")
     if {w.participant_id for w in learning} != {w.participant_id for w in validation}:
-        raise ValueError("Learning and validation must contain the same development participants")
+        raise ValueError("Learning and validation participants differ")
     if {window_identity(w) for w in learning} & {window_identity(w) for w in validation}:
         raise ValueError("A gait window appears in both learning and validation")
 
 
-def _triplet_tensors(triplets, normalizer, device):
-    def stack(role):
-        return torch.from_numpy(np.stack([
-            normalizer.transform(getattr(item, role).signal) for item in triplets
-        ])).to(device)
-    return stack("anchor"), stack("positive"), stack("negative")
-
-
-def _run_triplet_batches(model, index, normalizer, config, device, rng, count, optimizer):
+def _run_batches(
+    encoder, classifier, index, identity_to_label, normalizer, config,
+    device, rng, count, optimizer,
+):
     training = optimizer is not None
-    model.train(training)
-    losses = []
+    encoder.train(training)
+    classifier.train(training)
+    totals, metrics, identities = [], [], []
     context = torch.enable_grad() if training else torch.no_grad()
     with context:
         for _ in range(count):
-            triplets = sample_session1_triplets(
-                index, rng, config.triplets_per_batch
+            batch = sample_session1_batch(
+                index, identity_to_label, rng, config.participants_per_batch,
+                config.windows_per_condition,
             )
-            anchor, positive, negative = _triplet_tensors(
-                triplets, normalizer, device
-            )
+            signals = np.stack([normalizer.transform(w.signal) for w in batch.windows])
+            tensor = torch.from_numpy(signals).to(device)
+            labels = torch.tensor(batch.identity_labels, dtype=torch.long, device=device)
+            conditions = torch.tensor(batch.condition_labels, dtype=torch.long, device=device)
             if training:
                 optimizer.zero_grad()
-            # One shared encoder processes all three roles.
-            combined = model(torch.cat((anchor, positive, negative), dim=0))
-            size = len(triplets)
-            loss = triplet_loss(
-                combined[:size], combined[size:2 * size], combined[2 * size:],
-                config.margin,
+            embeddings = encoder(tensor)
+            metric_loss = session1_batch_hard_loss(
+                embeddings, labels, conditions, config.margin
             )
+            identity_loss = F.cross_entropy(classifier(embeddings), labels)
+            total = metric_loss + config.identity_loss_weight * identity_loss
             if training:
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
+                total.backward()
+                torch.nn.utils.clip_grad_norm_(
+                    (*encoder.parameters(), *classifier.parameters()), 5.0
+                )
                 optimizer.step()
-            losses.append(float(loss.detach()))
-    return float(np.mean(losses))
+            totals.append(float(total.detach()))
+            metrics.append(float(metric_loss.detach()))
+            identities.append(float(identity_loss.detach()))
+    return float(np.mean(totals)), float(np.mean(metrics)), float(np.mean(identities))
 
 
-def _validation_operating_point(
-    model, normalizer, learning, validation, participants, config
-):
+def _operating_point(encoder, normalizer, learning, validation, participants, config):
     templates = np.vstack([
         create_user_template(
             person,
             tuple(w for w in learning if
                   w.participant_id == person and w.condition == "st_control"),
-            model, normalizer, config.scoring_batch_size,
+            encoder, normalizer, config.scoring_batch_size,
         ).embedding
         for person in participants
     ])
-    probes = encode_probe_windows(
-        validation, model, normalizer, config.scoring_batch_size
-    )
-    distances = np.linalg.norm(templates[:, None, :] - probes[None, :, :], axis=2)
-    probe_people = np.asarray([w.participant_id for w in validation])
-    genuine_mask = np.asarray(participants)[:, None] == probe_people[None, :]
+    probes = encode_probe_windows(validation, encoder, normalizer, config.scoring_batch_size)
+    distances = np.linalg.norm(templates[:, None] - probes[None, :], axis=2)
+    owners = np.asarray([w.participant_id for w in validation])
+    genuine = np.asarray(participants)[:, None] == owners[None, :]
     return select_threshold_from_distances(
-        distances[genuine_mask], distances[~genuine_mask],
-        config.operating_target_far,
+        distances[genuine], distances[~genuine], config.operating_target_far
     )
 
 def train_encoder(
@@ -147,7 +146,6 @@ def train_encoder(
     config: TrainingConfig = TrainingConfig(),
     device: str = "cpu",
 ) -> TrainingResult:
-    """Train only on ST-control/ST-fatigue and restore the best validation epoch."""
     _check_partitions(learning_windows, validation_windows)
     torch.manual_seed(config.seed)
     selected_device = torch.device(device)
@@ -155,44 +153,53 @@ def train_encoder(
     learning_index = build_triplet_index(learning_windows)
     validation_index = build_triplet_index(validation_windows)
     participants = tuple(learning_index)
+    if config.participants_per_batch > len(participants):
+        raise ValueError("participants_per_batch exceeds development identities")
+    identity_to_label = {person: i for i, person in enumerate(participants)}
 
-    model = GaitEncoder(
+    encoder = GaitEncoder(
         config.hidden_size, config.embedding_size, config.dropout_probability
     ).to(selected_device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
+    classifier = DevelopmentIdentityClassifier(
+        config.embedding_size, len(participants)
+    ).to(selected_device)
+    optimizer = torch.optim.AdamW(
+        (*encoder.parameters(), *classifier.parameters()),
+        lr=config.learning_rate, weight_decay=config.weight_decay,
+    )
     train_rng = np.random.default_rng(config.seed)
     validation_rng = np.random.default_rng(config.seed + 1_000_000)
-
-    history = []
+    history, best_state = [], None
     best_key = (float("inf"), float("inf"), float("inf"))
-    best_state = None
-    best_epoch = 0
+    best_epoch, stale = 0, 0
     best_point = (float("inf"), float("inf"), float("nan"))
-    stale = 0
     for epoch in range(1, config.epochs + 1):
-        training_loss = _run_triplet_batches(
-            model, learning_index, normalizer, config, selected_device,
-            train_rng, config.batches_per_epoch, optimizer,
+        train_total, train_metric, train_identity = _run_batches(
+            encoder, classifier, learning_index, identity_to_label, normalizer,
+            config, selected_device, train_rng, config.batches_per_epoch, optimizer,
         )
-        validation_loss = _run_triplet_batches(
-            model, validation_index, normalizer, config, selected_device,
-            validation_rng, config.validation_batches, None,
+        validation_total, _, _ = _run_batches(
+            encoder, classifier, validation_index, identity_to_label, normalizer,
+            config, selected_device, validation_rng, config.validation_batches, None,
         )
-        threshold, frr, far = _validation_operating_point(
-            model, normalizer, learning_windows, validation_windows,
+        threshold, frr, far = _operating_point(
+            encoder, normalizer, learning_windows, validation_windows,
             participants, config,
         )
         history.append(EpochResult(
-            epoch, training_loss, validation_loss, frr, far, threshold
+            epoch, train_total, train_metric, train_identity, validation_total,
+            frr, far, threshold,
         ))
         print(
-            f"  epoch={epoch:02d} train_loss={training_loss:.5f} "
-            f"validation_loss={validation_loss:.5f} "
-            f"validation FRR/FAR={frr:.2%}/{far:.2%}"
+            f"  epoch={epoch:02d} train={train_total:.5f} "
+            f"metric={train_metric:.5f} identity={train_identity:.5f} "
+            f"validation={validation_total:.5f} FRR/FAR={frr:.2%}/{far:.2%}"
         )
-        key = (frr, far, validation_loss)
+        key = (frr, far, validation_total)
         if key < best_key:
-            best_key, best_state, best_epoch = key, deepcopy(model.state_dict()), epoch
+            best_key = key
+            best_state = deepcopy(encoder.state_dict())
+            best_epoch = epoch
             best_point = (frr, far, threshold)
             stale = 0
         else:
@@ -200,10 +207,10 @@ def train_encoder(
             if stale >= config.patience:
                 break
     if best_state is None:
-        raise RuntimeError("Training did not produce a valid encoder")
-    model.load_state_dict(best_state)
-    model.eval()
+        raise RuntimeError("No valid encoder state was produced")
+    encoder.load_state_dict(best_state)
+    encoder.eval()
     return TrainingResult(
-        model, normalizer, tuple(history), best_epoch,
+        encoder, normalizer, tuple(history), best_epoch,
         best_point[0], best_point[1], best_point[2],
     )

@@ -203,7 +203,20 @@ def _participant_metrics(
                 s for s in scores
                 if s.claimed_participant_id == pid and s.condition == condition
             )
-            results.append(calculate_authentication_rates(selected, threshold))
+
+            rates = calculate_authentication_rates(selected, threshold)
+
+            print(
+                f"  participant={pid:8s} "
+                f"condition={condition:12s} "
+                f"FRR={rates.frr:.2%} "
+                f"FAR={rates.far:.2%}"
+            )
+
+            results.append(rates)
+
+            # results.append(calculate_authentication_rates(selected, threshold))
+
     return tuple(results)
 
 
@@ -448,8 +461,10 @@ def main() -> None:
     parser.add_argument("--epochs",            type=int,   default=40)
     parser.add_argument("--patience",          type=int,   default=7)
     parser.add_argument("--batches-per-epoch", type=int,   default=100)
-    parser.add_argument("--triplets-per-batch", type=int, default=64)
+    parser.add_argument("--participants-per-batch", type=int, default=8)
+    parser.add_argument("--windows-per-condition", type=int, default=3)
     parser.add_argument("--validation-batches", type=int, default=20)
+    parser.add_argument("--identity-loss-weight", type=float, default=0.3)
     parser.add_argument("--device",            default="cpu")
     parser.add_argument("--target-far",        type=float, default=0.01)
     parser.add_argument("--fold",              type=int,   choices=(1, 2, 3, 4))
@@ -460,8 +475,10 @@ def main() -> None:
         epochs=args.epochs,
         patience=args.patience,
         batches_per_epoch=args.batches_per_epoch,
-        triplets_per_batch=args.triplets_per_batch,
+        participants_per_batch=args.participants_per_batch,
+        windows_per_condition=args.windows_per_condition,
         validation_batches=args.validation_batches,
+        identity_loss_weight=args.identity_loss_weight,
     )
     experiment = ExperimentConfig(
         training=training,
@@ -469,7 +486,7 @@ def main() -> None:
         device=args.device,
         selected_fold_index=None if args.fold is None else args.fold - 1,
     )
-    method_name = "condition_invariant_shared_threshold"
+    method_name = "session1_cnn_bilstm_hard"
     output_name = (
         method_name if args.fold is None else f"{method_name}_fold_{args.fold}"
     )

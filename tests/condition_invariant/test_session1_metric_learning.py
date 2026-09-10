@@ -5,7 +5,7 @@ import pytest
 import torch
 
 from src.condition_invariant.config import TRAINING_CONDITIONS
-from src.condition_invariant.model import GaitEncoder, triplet_loss
+from src.condition_invariant.model import GaitEncoder, session1_batch_hard_loss
 from src.condition_invariant.records import GaitWindow
 from src.condition_invariant.triplets import (
     GaitTriplet, build_triplet_index, sample_session1_triplets,
@@ -37,11 +37,13 @@ def test_encoder_returns_unit_64d_embeddings():
     torch.testing.assert_close(torch.linalg.vector_norm(output, dim=1), torch.ones(3))
 
 
-def test_triplet_loss_rewards_correct_separation():
-    anchor = torch.tensor([[1., 0.]])
-    positive = torch.tensor([[.9, .1]])
-    negative = torch.tensor([[-1., 0.]])
-    assert triplet_loss(anchor, positive, negative, .2).item() == 0.
+def test_batch_hard_loss_rewards_correct_separation():
+    embeddings = torch.tensor([[1., 0.], [.99, .01], [-1., 0.], [-.99, .01]])
+    identities = torch.tensor([0, 0, 1, 1])
+    conditions = torch.tensor([0, 1, 0, 1])
+    assert session1_batch_hard_loss(
+        embeddings, identities, conditions, .2
+    ).item() == 0.
 
 
 def test_every_sampled_anchor_is_st_control_and_dt_is_absent():
@@ -86,7 +88,8 @@ def test_trainer_runs_using_session1_triplets_only():
         learning, validation,
         TrainingConfig(
             epochs=1, batches_per_epoch=1, validation_batches=1,
-            triplets_per_batch=4, hidden_size=4, embedding_size=4,
+            participants_per_batch=3, windows_per_condition=2,
+            hidden_size=4, embedding_size=4,
             dropout_probability=0.,
         ),
     )

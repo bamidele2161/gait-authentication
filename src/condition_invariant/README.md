@@ -19,12 +19,13 @@ It is intentionally separate from the existing statistical-feature RBF-SVM basel
 2. Use only session-1 ST-control and ST-fatigue from development identities;
    split those recordings chronologically into learning and validation.
 3. Fit six-channel normalization on development-learning windows only.
-4. Train one shared 64-unit LSTM encoder with explicit triplets: every anchor is
-   ST-control; positives are the same person's ST-control or ST-fatigue; negatives
-   are another person's ST-control or ST-fatigue.
-5. Apply triplet loss so the positive is closer to the anchor than the negative
-   by the configured margin.
-6. Convert each 2-second window into one L2-normalized 64-D embedding.
+4. Encode each window with three temporal convolutions, a bidirectional LSTM,
+   attention/max pooling, and a 64-D L2-normalized projection.
+5. In each balanced session-1 batch, treat ST-control windows as anchors. Online
+   hard mining selects the farthest same-person ST-control/ST-fatigue positive
+   and closest other-person ST-control/ST-fatigue negative for every anchor.
+6. Optimize batch-hard metric loss plus a temporary development-identity
+   classification loss. The classifier is discarded after encoder training.
 7. Enrol each unseen evaluation user using ST-control windows only; average and
    L2-normalize those embeddings to create one template.
 8. Compare every probe with the claimed template using Euclidean distance.
@@ -51,7 +52,6 @@ condition-specific model, condition-specific template, or evaluation-time retrai
 10. `enrollment.py`
 11. `scoring.py`
 12. `metrics.py`
-13. `verifier.py`
-14. `run_experiment.py`
+13. `run_experiment.py`
 
-Each file will be implemented and tested before work begins on the next file.
+The test suite enforces both the participant boundary and the session boundary.
