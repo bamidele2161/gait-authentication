@@ -31,6 +31,11 @@ class AuthenticationRates:
     impostor_count: int
     false_rejection_count: int
     false_acceptance_count: int
+    # Threshold-free separability, reported alongside FRR/FAR. The threshold is
+    # calibrated on session 1 and applied to session 2, so FRR/FAR at that
+    # threshold carries a calibration artifact that EER is free of.
+    eer: float = float("nan")
+    eer_threshold: float = float("nan")
 
 
 @dataclass(frozen=True)
@@ -43,6 +48,8 @@ class MacroAverage:
     standard_deviation_frr: float
     mean_far: float
     standard_deviation_far: float
+    mean_eer: float = float("nan")
+    standard_deviation_eer: float = float("nan")
 
 
 def _error_rates(
@@ -174,6 +181,34 @@ def select_threshold_from_distances(
     )
 
 
+def equal_error_rate(
+    genuine_distances: np.ndarray,
+    impostor_distances: np.ndarray,
+) -> tuple[float, float]:
+    """Return the threshold-free EER and the distance that achieves it."""
+
+    genuine = np.sort(np.asarray(genuine_distances, dtype=np.float64))
+    impostor = np.sort(np.asarray(impostor_distances, dtype=np.float64))
+    if genuine.ndim != 1 or genuine.size == 0:
+        raise ValueError("Genuine distances must be a non-empty vector")
+    if impostor.ndim != 1 or impostor.size == 0:
+        raise ValueError("Impostor distances must be a non-empty vector")
+    if not np.isfinite(genuine).all() or not np.isfinite(impostor).all():
+        raise ValueError("EER distances must be finite")
+
+    observed = np.concatenate((genuine, impostor))
+    candidates = np.concatenate(
+        ([np.nextafter(observed.min(), -np.inf)], np.unique(observed))
+    )
+    frr_values = 1.0 - np.searchsorted(genuine, candidates, side="right") / genuine.size
+    far_values = np.searchsorted(impostor, candidates, side="right") / impostor.size
+    index = int(np.argmin(np.abs(frr_values - far_values)))
+    return (
+        float((frr_values[index] + far_values[index]) / 2.0),
+        float(candidates[index]),
+    )
+
+
 def calculate_authentication_rates(
     scores: tuple[ComparisonScore, ...],
     threshold: float,
@@ -195,6 +230,10 @@ def calculate_authentication_rates(
     frr, far, genuine_count, impostor_count, false_rejections, false_acceptances = (
         _error_rates(scores, threshold)
     )
+    eer, eer_threshold = equal_error_rate(
+        np.asarray([s.distance for s in scores if s.is_genuine]),
+        np.asarray([s.distance for s in scores if not s.is_genuine]),
+    )
     return AuthenticationRates(
         claimed_participant_id=next(iter(claimed_participants)),
         condition=next(iter(conditions)),
@@ -204,6 +243,8 @@ def calculate_authentication_rates(
         impostor_count=impostor_count,
         false_rejection_count=false_rejections,
         false_acceptance_count=false_acceptances,
+        eer=eer,
+        eer_threshold=eer_threshold,
     )
 
 
@@ -225,6 +266,7 @@ def macro_average_rates(
 
     frr_values = np.asarray([rates.frr for rates in participant_rates])
     far_values = np.asarray([rates.far for rates in participant_rates])
+    eer_values = np.asarray([rates.eer for rates in participant_rates])
     ddof = 1 if len(participant_rates) > 1 else 0
     return MacroAverage(
         condition=next(iter(conditions)),
@@ -233,4 +275,6 @@ def macro_average_rates(
         standard_deviation_frr=float(frr_values.std(ddof=ddof)),
         mean_far=float(far_values.mean()),
         standard_deviation_far=float(far_values.std(ddof=ddof)),
+        mean_eer=float(eer_values.mean()),
+        standard_deviation_eer=float(eer_values.std(ddof=ddof)),
     )

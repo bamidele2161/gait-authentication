@@ -1,7 +1,12 @@
 """Fixed paths and data facts for the condition-invariant experiment.
 
-This module describes where the experiment reads and writes data. It does not
-load recordings, split participants, or contain model-training logic.
+This experiment reuses the existing six-channel sacrum IMU windows, but the
+model receives only two derived channels:
+
+- AccMagnitude = sqrt(AccX^2 + AccY^2 + AccZ^2)
+- GyrMagnitude = sqrt(GyrX^2 + GyrY^2 + GyrZ^2)
+
+No preprocessing files need to be regenerated.
 """
 
 from pathlib import Path
@@ -14,14 +19,32 @@ PACKAGE_DIR = Path(__file__).resolve().parent
 SRC_DIR = PACKAGE_DIR.parent
 
 # Reuse the raw sacrum windows created by src/02_preprocess.py.
-WINDOWS_DIR = SRC_DIR / "data" / "processed" / "windows" / "sacrum_time"
+WINDOWS_DIR = (
+    SRC_DIR
+    / "data"
+    / "processed"
+    / "windows"
+    / "sacrum_time"
+)
 
-# Keep the proposed method's artifacts separate from the baseline experiment.
-MODELS_DIR = SRC_DIR / "models" / "condition_invariant"
-RESULTS_DIR = SRC_DIR / "results" / "condition_invariant"
+# Experiment output directories.
+MODELS_DIR = (
+    SRC_DIR
+    / "models"
+    / "condition_invariant"
+)
+
+RESULTS_DIR = (
+    SRC_DIR
+    / "results"
+    / "condition_invariant"
+)
 
 
-# The four DUO-GAIT recording conditions used throughout the experiment.
+# ---------------------------------------------------------------------------
+# Conditions
+# ---------------------------------------------------------------------------
+
 CONDITIONS = (
     "st_control",
     "st_fatigue",
@@ -30,13 +53,24 @@ CONDITIONS = (
 )
 
 # Session 1 supplies representation learning and threshold development.
-TRAINING_CONDITIONS = ("st_control", "st_fatigue")
+TRAINING_CONDITIONS = (
+    "st_control",
+    "st_fatigue",
+)
 
 # Session 2 was recorded seven days later and is final test data only.
-EVALUATION_CONDITIONS = ("dt_control", "dt_fatigue")
+EVALUATION_CONDITIONS = (
+    "dt_control",
+    "dt_fatigue",
+)
 
-# Column order used when src/02_preprocess.py saved each NumPy window.
-SENSOR_CHANNELS = (
+
+# ---------------------------------------------------------------------------
+# Sensor configuration
+# ---------------------------------------------------------------------------
+
+# Original channel order in the already-saved NumPy windows.
+STORED_SENSOR_CHANNELS = (
     "GyrX",
     "GyrY",
     "GyrZ",
@@ -45,19 +79,55 @@ SENSOR_CHANNELS = (
     "AccZ",
 )
 
+# Features supplied to the model in this experiment.
+SENSOR_CHANNELS = (
+    "AccMagnitude",
+    "GyrMagnitude",
+)
 
-# Fixed properties of every processed window.
+
+# ---------------------------------------------------------------------------
+# Window properties
+# ---------------------------------------------------------------------------
+
 SAMPLING_RATE_HZ = 128
+
 WINDOW_SECONDS = 2
-WINDOW_SAMPLES = SAMPLING_RATE_HZ * WINDOW_SECONDS
+
+WINDOW_SAMPLES = (
+    SAMPLING_RATE_HZ
+    * WINDOW_SECONDS
+)
+
 WINDOW_STEP_SAMPLES = 128
-WINDOW_OVERLAP = 1 - (WINDOW_STEP_SAMPLES / WINDOW_SAMPLES)
-NUMBER_OF_CHANNELS = len(SENSOR_CHANNELS)
-EXPECTED_WINDOW_SHAPE = (WINDOW_SAMPLES, NUMBER_OF_CHANNELS)
+
+WINDOW_OVERLAP = (
+    1
+    - (
+        WINDOW_STEP_SAMPLES
+        / WINDOW_SAMPLES
+    )
+)
+
+NUMBER_OF_CHANNELS = len(
+    SENSOR_CHANNELS
+)
+
+EXPECTED_WINDOW_SHAPE = (
+    WINDOW_SAMPLES,
+    NUMBER_OF_CHANNELS,
+)
 
 
 def ensure_output_directories() -> None:
-    """Create only the proposed experiment's model and result directories."""
+    """Create the experiment's model and result directories."""
 
-    MODELS_DIR.mkdir(parents=True, exist_ok=True)
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    MODELS_DIR.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    RESULTS_DIR.mkdir(
+        parents=True,
+        exist_ok=True,
+    )

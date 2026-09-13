@@ -51,7 +51,9 @@ from src.condition_invariant.metrics import (
 )
 from src.condition_invariant.normalization import ChannelNormalizer
 from src.condition_invariant.records import GaitWindow
-from src.condition_invariant.scoring import ComparisonScore, score_windows
+from src.condition_invariant.scoring import (
+    ComparisonScore, causal_mean_fusion, score_windows,
+)
 from src.condition_invariant.train import TrainingConfig, TrainingResult, train_encoder
 
 
@@ -72,6 +74,10 @@ class ExperimentConfig:
     scoring_batch_size: int = 64
     device: str = "cpu"
     selected_fold_index: int | None = None
+    # Consecutive probe windows averaged into one decision. Windows are 2 s with
+    # a 1 s hop, so n windows span n + 1 seconds of walking. A value of 1 keeps
+    # the original per-window behaviour.
+    fusion_window: int = 10
 
 
 # ---------------------------------------------------------------------------
@@ -210,7 +216,8 @@ def _participant_metrics(
                 f"  participant={pid:8s} "
                 f"condition={condition:12s} "
                 f"FRR={rates.frr:.2%} "
-                f"FAR={rates.far:.2%}"
+                f"FAR={rates.far:.2%} "
+                f"EER={rates.eer:.2%}"
             )
 
             results.append(rates)
@@ -388,6 +395,17 @@ def run_experiment(
             batch_size=config.scoring_batch_size,
             conditions=EVALUATION_CONDITIONS,
         )
+        # One decision per run of consecutive windows instead of one per window.
+        #
+        # The threshold above is deliberately left calibrated on UNFUSED
+        # development scores. Fusing those too drives the development genuine
+        # and impostor distributions almost perfectly apart, which collapses the
+        # threshold far below where unseen session-2 scores fall and sends FRR
+        # to ~100%. Fusing only the probe side is what the measured gain rests on.
+        if config.fusion_window > 1:
+            evaluation_scores = causal_mean_fusion(
+                evaluation_scores, config.fusion_window
+            )
 
         # ── 5. Apply threshold, compute per-participant metrics ───────────
         fold_rates = _participant_metrics(
@@ -438,14 +456,20 @@ def run_experiment(
         results_dir / "macro_summary.csv", index=False
     )
 
-    print("\nMacro-average across participants (each participant has equal weight)")
+    decision_seconds = config.fusion_window + 1
+    print(
+        f"\nMacro-average across participants (each participant has equal weight, "
+        f"{config.fusion_window} window(s) = {decision_seconds}s per decision)"
+    )
     for summary in summaries:
         print(
             f"{summary.condition:12s} "
             f"FRR={summary.mean_frr:.2%} "
             f"(SD {summary.standard_deviation_frr:.2%})  "
             f"FAR={summary.mean_far:.2%} "
-            f"(SD {summary.standard_deviation_far:.2%})"
+            f"(SD {summary.standard_deviation_far:.2%})  "
+            f"EER={summary.mean_eer:.2%} "
+            f"(SD {summary.standard_deviation_eer:.2%})"
         )
     return rates, summaries
 
@@ -468,6 +492,11 @@ def main() -> None:
     parser.add_argument("--device",            default="cpu")
     parser.add_argument("--target-far",        type=float, default=0.01)
     parser.add_argument("--fold",              type=int,   choices=(1, 2, 3, 4))
+    parser.add_argument(
+        "--fusion-window", type=int, default=10,
+        help="consecutive 2s probe windows averaged per decision; n spans "
+             "n+1 seconds of walking. Use 1 for the original per-window system.",
+    )
     args = parser.parse_args()
 
     ensure_output_directories()
@@ -485,8 +514,11 @@ def main() -> None:
         target_far=args.target_far,
         device=args.device,
         selected_fold_index=None if args.fold is None else args.fold - 1,
+        fusion_window=args.fusion_window,
     )
     method_name = "session1_cnn_bilstm_hard"
+    if args.fusion_window > 1:
+        method_name = f"{method_name}_fusion{args.fusion_window}"
     output_name = (
         method_name if args.fold is None else f"{method_name}_fold_{args.fold}"
     )
