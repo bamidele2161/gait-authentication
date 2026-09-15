@@ -517,6 +517,8 @@ def main() -> None:
         fusion_window=args.fusion_window,
     )
     method_name = "session1_cnn_bilstm_hard"
+    if args.folds != 4:
+        method_name = f"{method_name}_{args.folds}fold"
     if args.fusion_window > 1:
         method_name = f"{method_name}_fusion{args.fusion_window}"
     output_name = (

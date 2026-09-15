@@ -1,0 +1,248 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+\usepackage{amsmath,amssymb,booktabs,graphicx,array,multirow,url}
+\usepackage[T1]{fontenc}
+\usepackage{cite}
+\usepackage[hidelinks]{hyperref}
+
+\title{Normal-Walk Enrollment Under Fatigue and Cross-Visit Dual-Task Walking:\\A Sacrum-IMU Gait Verification Study}
+\author{\IEEEauthorblockN{Bamidele Akinyemi}
+\IEEEauthorblockA{Department of Artificial Intelligence\\
+University of Wyoming\\
+Laramie, WY 82071, USA\\
+bakinyem@uwyo.edu}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Gait verification is appealing because a wearable can check identity without interrupting its owner. Its usefulness, however, depends on what happens after enrollment: the person may become fatigued, return days later, or walk while doing something else. We study these changes using sacrum accelerometer and gyroscope data from 16 DUO-GAIT participants. A statistical-feature support vector machine (SVM), trained and calibrated on ordinary single-task walking, provides a leakage-aware problem assessment. Its mean false rejection/false acceptance rates are 1.49/1.49\% on held-out normal walking, 19.13/11.26\% after same-visit fatigue, 23.04/10.15\% on later dual-task walking, and 54.33/13.95\% on later fatigued dual-task walking. To address the enrollment mismatch, we develop a population-trained Siamese encoder that learns from normal and fatigued walks of development participants while requiring only normal walking from each new user. Using acceleration and angular-velocity magnitudes and an 11-second causal score average, it obtains cross-visit rates of 15.84/11.42\% and 45.99/12.14\% on the two dual-task conditions. The method provides a concrete route to normal-only enrollment under changed walking conditions, with its strongest gain on non-fatigued dual-task walking. Its residual post-fatigue error, differing comparison protocols, and exploratory fusion selection remain important limits to the claim.
+\end{abstract}
+
+\begin{IEEEkeywords}
+gait verification, continuous authentication, inertial sensors, fatigue, dual-task walking, metric learning, cross-session evaluation
+\end{IEEEkeywords}
+
+\section{Introduction}
+An initial unlock answers who gained access to a device at one point in time. Continuous authentication asks whether that person is still the user later, preferably without another explicit interaction. Behavioral signals are attractive for this purpose because they can be observed during normal use. Gait is one such signal: accelerometers and gyroscopes already present in mobile and wearable devices can register repeated body motion while the owner walks. Early accelerometer studies established the feasibility of recognizing users from gait \cite{Mantyjarvi2005,Derawi2010,Kwapisz2010}; subsequent work broadened the range of sensors, models, and deployment settings \cite{SpragerReview2015,Abuhamad2020}.
+
+The difficult question is not whether two windows cut from one walk can be distinguished. It is whether a verifier enrolled from a person's ordinary walk still recognizes that person after exertion or on a later visit. Inertial signals change with task, pace, placement, and the body itself. Population-scale and in-the-wild studies have made clear that sample acquisition is part of the problem, not merely a preprocessing detail \cite{Ngo2014,Zou2020}. Clinical gait research also shows that attention and physical fatigue can change walking characteristics, although those studies do not by themselves establish the effect on biometric error \cite{Yogev2008,Granacher2010}.
+
+We use DUO-GAIT, which recorded walking before and after fatigue in a single-task (ST) visit and a dual-task (DT) visit separated by approximately seven days \cite{Zhou2023}. Here, \emph{ST-control} means single-task walking before fatigue, \emph{ST-fatigue} means single-task walking after fatigue, \emph{DT-control} means dual-task walking before fatigue, and \emph{DT-fatigue} means dual-task walking after fatigue. We first quantify what goes wrong when a conventional user-specific SVM is enrolled from ST-control alone. We then test a different design: learn a reusable representation from the first-visit walks of other people, but ask a newly enrolled user to provide only ST-control walking. A new user is never asked to walk while fatigued or to perform the cognitive task for enrollment.
+
+Three boundaries are central to the interpretation. First, DT is also a later visit, so its difference from ST cannot be attributed solely to cognition: elapsed time and sensor reattachment are inseparable in this dataset. Second, the representation learner is allowed to see \emph{other people's} ST-fatigue examples during population development. This is consistent with normal-only enrollment of a new user, but it is not training without fatigue data anywhere. Third, the current 11-second fusion result is exploratory: the duration was compared with several alternatives on the evaluation participants, and score fusion was applied after an unfused development threshold had been fixed. We report those choices plainly rather than describing the experiment as a locked external validation.
+
+Our contributions are therefore measured ones: (i) a chronological, leakage-aware sacrum-IMU SVM assessment across all four conditions; (ii) an explicit normal-only enrollment protocol for unseen users using a two-magnitude Siamese encoder trained on the first-visit conditions of development participants; and (iii) a report of both false rejection and false acceptance, including the limits of causal temporal fusion. Neither lower false rejection alone nor a low equal-error rate at a retrospectively selected threshold is sufficient evidence of a secure deployed system.
+
+\section{Related Work}
+\subsection{Inertial gait authentication}
+Portable-device gait recognition predates current deep models. M\"antyj\"arvi \emph{et al.} used accelerometer-derived gait patterns for user identification \cite{Mantyjarvi2005}. Derawi \emph{et al.} studied unobtrusive mobile-phone verification and gait-cycle detection \cite{Derawi2010,DerawiCycle2010}, while Kwapisz \emph{et al.} explored cell-phone behavioral identification \cite{Kwapisz2010}. These papers motivate an authentication setting in which the user need not intentionally perform a biometric gesture, but they also leave acquisition context as a practical concern. Ngo \emph{et al.} examined a much larger inertial gait database \cite{Ngo2014}, and Sprager and Juri\v{c} review variation in sensors, features, and evaluation protocols \cite{SpragerReview2015}.
+
+Feature-engineered systems remain useful as interpretable references. Higher-order statistics have been used for accelerometer gait authentication \cite{SpragerHOS2015}; context-aware accelerometer authentication explicitly considers motion context \cite{Primo2014}. Nair \emph{et al.}'s \emph{Continuous Authentication Using Gait Patterns}, coauthored by Shukla, is a relevant statistical-feature comparison \cite{Nair2023}. Our SVM is not a reproduction of that system; it is a deliberately transparent within-user baseline with a fixed operating point and cross-condition probes. SVMs are a reasonable reference because they can fit nonlinear feature boundaries from limited enrollment data \cite{Cortes1995}, but favorable within-recording numbers should not be read as evidence of cross-visit stability.
+
+Deep gait studies have used convolutional features, recurrent sequences, and multiple sensors \cite{Dehzangi2017,Gadaleta2018,FernandezLopez2019,Tran2021}. IDNet, for example, couples learned gait representations with smartphone-based verification \cite{Gadaleta2018}; wrist-worn continuous authentication is another distinct acquisition setting \cite{Cola2021}. Zou \emph{et al.} focus on smartphone gait recognition in less controlled conditions \cite{Zou2020}. These results are important precedents, but reported accuracies cannot be compared directly across different devices, participant populations, impostor definitions, enrollment regimes, and decision durations. Biometric performance is a property of the whole protocol, not a network alone \cite{Jain2004}.
+
+\subsection{Variation across time, action, and condition}
+Permatasari \emph{et al.} investigated temporal change in inertial gait authentication and proposed adaptive one-dimensional time-invariant learning \cite{Permatasari2023}. Their cross-month setting underscores why a later recording is a more meaningful challenge than a randomly held-out window from the same recording. Their method is not the source of our exact two-magnitude network: magnitude conversion is our orientation-tolerance choice, and the two works should not be conflated. Rasnayaka and Sim's \emph{Action-Invariant IMU-Gait for Continuous Authentication} learns a representation intended to transfer across actions using Siamese/triplet training \cite{Rasnayaka2022}. It is the closest methodological motivation for making gait embeddings less dependent on the observed walking condition. Our setting differs by restricting training to the two first-visit conditions and testing on the later dual-task visit. Gait-based multimodal learning \cite{Papavasileiou2017} and continuous multimodal verification \cite{Sim2007} offer other ways to increase robustness, but this study keeps a single sacrum sensor so that condition effects remain visible.
+
+The timing of the walking task matters biologically as well as computationally. Executive attention contributes to gait control \cite{Yogev2008}, and an experimental study found that muscle fatigue altered gait characteristics under single- and dual-task conditions, with effects varying by age and measure \cite{Granacher2010}. We therefore do not impose a monotonic rule that DT-fatigue must always be harder than ST-fatigue for every participant. The recordings sample different walks on different days; individual compensatory strategies and attachment changes may alter the score in either direction. The DUO-GAIT dataset was designed to expose these conditions \cite{Zhou2023}, but it does not turn the later DT visit into a controlled isolation of cognitive load alone.
+
+\subsection{Metric learning and score aggregation}
+Our encoder maps short IMU windows into a common space, following the general idea of learned verification embeddings \cite{Schroff2015}. Batch-hard triplet learning chooses difficult same-person and different-person examples within a minibatch \cite{Hermans2017}. A convolutional front end represents local motion patterns; a bidirectional long short-term memory (BiLSTM) layer summarizes their sequence \cite{Hochreiter1997,Schuster1997}. These ingredients are established, not claimed as new in isolation. The question here is whether their combination, under normal-only enrollment and a held-out later visit, yields useful false-rejection and false-acceptance behavior. Averaging consecutive comparison scores is a separate decision-time intervention, conceptually related to repeated evidence in continuous verification \cite{Sim2007}; it changes latency and score calibration and must be evaluated as such.
+
+\section{Data and Evaluation Design}
+\subsection{DUO-GAIT and sacrum recordings}
+DUO-GAIT contains recordings from 16 participants wearing inertial measurement units at several body locations, including the sacrum \cite{Zhou2023}. We use the sacrum triaxial accelerometer and triaxial gyroscope sampled at 128 Hz. One sensor position keeps the acquisition story simple and avoids treating additional body placements as independent observations. For each participant, we analyze ST-control and ST-fatigue from the single-task visit, and DT-control and DT-fatigue from the later dual-task visit. The dataset's dual task involved concurrent mental arithmetic, and fatigue followed an exercise protocol described by its creators \cite{Zhou2023}. These are laboratory conditions, not samples of every kind of real-world fatigue or divided attention.
+
+An unusual ST-control sacrum recording for participant 07 extends well beyond the concurrent sensor recordings. We retain this participant by restricting that particular sacrum file to the timestamp interval 769.53125--1146.875~s, matching the corresponding ST-control sensor interval. The other three recordings for participant 07 are not trimmed in this way. This is a recording-alignment correction, not deletion of an inconvenient participant; the final cohort remains 16. The trimming rule was chosen after observing the recording discrepancy and should be disclosed when reproducing the experiment.
+
+Both pipelines use 256-sample windows (2~s) with a 128-sample hop (50\% overlap). Adjacent windows consequently share half their raw samples. We retain chronological order and separate the relevant partitions by raw-sample boundaries where a split occurs. A random row-wise train/test split would place nearly identical portions of a walk on both sides of the split and could give an optimistic estimate. This does not imply that overlap itself is forbidden: overlap improves temporal coverage, provided shared raw samples do not cross enrollment, validation, and test boundaries.
+
+\begin{figure*}[t]
+\centering\includegraphics[width=0.94\textwidth]{figures/protocol_timeline}
+\caption{Recording conditions and split boundaries used by the two experiments. ST-C/ST-F are first-visit recordings; DT-C/DT-F are from the later visit. The SVM uses chronological ST-C partitions, while the population encoder evaluates identities unseen during development.}
+\label{fig:timeline}
+\end{figure*}
+
+\subsection{Claim-level verification and error rates}
+At verification time a person claims an enrolled identity $u$. A probe from $u$ is a \emph{genuine} attempt; a probe from any other study participant against $u$'s template is an \emph{impostor} attempt. If $A(s,t)$ indicates that score $s$ is accepted at threshold $t$, false-rejection and false-acceptance rates for identity $u$ and condition $c$ are
+\begin{equation}
+\mathrm{FRR}_{u,c}=\frac{\#\{\text{rejected genuine attempts}\}}{\#\{\text{genuine attempts}\}},\quad
+\mathrm{FAR}_{u,c}=\frac{\#\{\text{accepted impostor attempts}\}}{\#\{\text{impostor attempts}\}}.
+\end{equation}
+We report a participant macro-average, $16^{-1}\sum_u r_{u,c}$, so a participant with a longer recording does not dominate a condition's summary. Parenthesized standard deviations describe variation \emph{between participant rates}, not confidence intervals and not variation among overlapping windows. The system's observed FAR at evaluation may differ from its 1\% \emph{development target}; that target is not a guarantee about later visits or unseen identities. Equal-error rate (EER) is reported only where an evaluation ROC is computed. Because EER selects a threshold using evaluation labels, it describes score separability retrospectively, not the error of the fixed-threshold authenticator \cite{Jain2004}.
+
+\section{Experiment I: Statistical-Feature SVM}
+\subsection{Features and user-specific models}
+The problem assessment begins with a conventional, explainable verifier. For each window we form the six axis signals and the two vector magnitudes
+\begin{equation}
+m_a(t)=\sqrt{a_x(t)^2+a_y(t)^2+a_z(t)^2},\qquad
+m_g(t)=\sqrt{g_x(t)^2+g_y(t)^2+g_z(t)^2}.
+\end{equation}
+For each of these eight signals, the implementation extracts 11 time-domain summaries: mean, standard deviation, median, minimum, maximum, range, interquartile range, median absolute deviation, root-mean-square value, skewness, and kurtosis. The resulting vector has 88 components. These statistics are not claimed to be a canonical set from one paper; they cover level, spread, shape, and energy while retaining an inspectable baseline, in the spirit of earlier feature-based inertial systems \cite{SpragerHOS2015,Nair2023}.
+
+One radial-basis-function SVM is trained per enrolled participant against windows of the remaining participants. Standardization is fitted on training data only. A grid over $C\in\{0.1,1,10,100\}$ and $\gamma\in\{\mathrm{scale},0.001,0.01,0.1\}$ is selected by five-fold \texttt{StratifiedGroupKFold} on training blocks, using ROC area as the selection measure. Grouping avoids splitting a short chronological block's overlapping windows across internal folds. The implementation uses scikit-learn \cite{Pedregosa2011}; the SVM formulation follows \cite{Cortes1995}. Cross-validation is for model selection within the training portion, not a replacement for a held-out test.
+
+\subsection{Chronological calibration}
+For each ST-control recording, windows are ordered in time and divided approximately 60/20/20 into training, threshold-development, and baseline-test portions, with guard windows at boundaries so the adjacent partitions share no raw samples. The participant's ST-control training windows are the positive class. Other participants' eligible ST-control windows serve as negatives. A separate threshold for each enrolled participant is chosen on ST-control validation scores to satisfy an empirical impostor acceptance target of at most 1\%. The same threshold is then applied unchanged to that participant's baseline ST-control test windows and to all three other conditions. No ST-fatigue or DT recording is used to tune this baseline threshold.
+
+The SVM therefore answers a narrow but important question: \emph{How far does a verifier trained on an ordinary walk drift when the same identity is probed in another condition?} The answer is not a direct estimate of what the later population-trained model will achieve, because the two experiments differ in training identities, fatigue exposure, score type, threshold structure, and decision duration. Their comparison is a design reference, not a matched controlled ablation.
+
+\begin{table}[t]
+\caption{Statistical-feature SVM, 16-participant macro-average. Rates are percentages; SD is across participants. A participant-specific threshold was calibrated on ST-control validation at a 1\% FAR target.}
+\label{tab:svm}
+\centering\small
+\begin{tabular}{lrrrr}
+\toprule
+Condition & FRR & SD & FAR & SD\\
+\midrule
+ST-control (baseline) & 1.49 & 3.73 & 1.49 & 0.91\\
+ST-fatigue & 19.13 & 34.98 & 11.26 & 11.27\\
+DT-control & 23.04 & 37.95 & 10.15 & 6.55\\
+DT-fatigue & 54.33 & 39.20 & 13.95 & 12.40\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{What the assessment shows}
+Table~\ref{tab:svm} shows a low held-out baseline error but sharply larger errors outside the enrollment condition. The ST-fatigue comparison stays within the ST visit yet raises mean FRR to 19.13\% and mean FAR to 11.26\%. DT-control raises mean FRR to 23.04\% while also increasing FAR relative to baseline. DT-fatigue is most difficult in aggregate, with 54.33\% mean FRR. In biometric terms, both convenience and security change: a rule that rejects more legitimate users can still accept more impostors from the shifted condition. These values do not imply that fatigue, time, and cognitive task have additive or separately identified causal contributions. They show performance under the recorded combinations.
+
+The large across-participant standard deviations are as important as the means. Some users remain easy to verify; others fail under a particular walk. A mean alone can hide near-total rejection for a small subset, and the direction of difficulty need not be identical for every user. This motivates reporting participant-level rates and score distributions in addition to a single summary value. The intended diagnostic figure is a participant-by-condition FRR/FAR display, with the participant-07 trimming annotated so its influence can be inspected rather than inferred.
+
+\begin{figure*}[t]
+\centering\includegraphics[width=0.94\textwidth]{figures/svm_participant_errors}
+\caption{Participant-level SVM false rejection and false acceptance across the four recording conditions. The shared 0--100\% color scale makes the substantial between-person variation visible; values of at least 15\% are labeled.}
+\label{fig:participants}
+\end{figure*}
+
+\begin{figure}[t]
+\centering\includegraphics[width=\columnwidth]{figures/svm_condition_errors}
+\caption{Statistical-feature SVM error by recording condition. Bars are the 16-participant macro-average; each dot is one participant. Error grows sharply outside the enrollment condition, and the per-participant spread is as large as the change in the mean.}
+\label{fig:conditions}
+\end{figure}
+
+\section{Experiment II: Normal-Only Enrollment with a Population Encoder}
+\subsection{Design objective and allowed data}
+The second experiment keeps the enrollment burden realistic. A new user supplies only ST-control walking, yet the reusable encoder may learn from ST-control and ST-fatigue of \emph{different} development users. The later DT-control and DT-fatigue recordings are held out as cross-visit tests. We split the 16 participants into four deterministic outer folds. In each fold, 12 participants contribute development data and four completely unseen participants are enrolled and evaluated. Every participant appears in the unseen group once. Within each development participant and each first-visit condition, chronological blocks are divided 80/20 for learning and validation, with windows crossing the boundary removed. The validation portion is used for early stopping and a fold-wide score threshold; no evaluation participant or DT condition enters training or calibration.
+
+The word \emph{Siamese} describes shared weights, not a requirement for two separate network files or a binary pair label. The same encoder maps every window into an embedding. The model is optimized with a triplet objective rather than explicit $(\text{pair},0/1)$ training. For each ST-control anchor $a$, a same-person window $p$ may come from ST-control or ST-fatigue, and a different-person window $n$ may come from either condition. Within a minibatch we take the farthest available positive and closest negative and minimize
+\begin{equation}
+\mathcal{L}_{\mathrm{triplet}}=\frac{1}{|A|}\sum_{a\in A}\max\bigl(0,\|z_a-z_p\|_2-\|z_a-z_n\|_2+0.2\bigr),
+\end{equation}
+where $A$ contains only ST-control anchors and $z$ is a unit-length embedding. This arrangement explicitly asks the representation to keep a development user's normal and fatigued windows close while separating other users. An auxiliary identity-classification head over the 12 development identities contributes weighted cross-entropy during training; it is discarded before enrolling the four new users. The goal is transfer of a representation, not identification of new users by a closed-set classifier.
+
+\subsection{Two-magnitude input and network}
+Rather than using eight axis-and-magnitude channels, the evaluated system computes just $m_a(t)$ and $m_g(t)$ from the raw six-axis sacrum windows. These are \emph{time series of magnitudes}, not two scalar summary features. Each input has shape $256\times2$. Taking vector norms removes changes caused solely by rotating the sensor coordinate axes, which is a plausible source of cross-visit variation. It does not remove changes in motion dynamics, nonrigid sensor displacement, or differences in how the unit is strapped on. The motivation is related to the general temporal-robustness problem studied by Permatasari \emph{et al.} \cite{Permatasari2023}, but no claim is made that their algorithm or exact input representation is reproduced here.
+
+Channel normalization is estimated on development \emph{learning} windows and reused unchanged for validation and unseen-user evaluation. Three one-dimensional convolutional blocks (32, 64, and 96 channels) capture local temporal patterns. A 64-unit-per-direction BiLSTM processes the resulting sequence. Attention-weighted and maximum temporal pools are concatenated, projected through a 128-unit layer to a 64-dimensional vector, and $L_2$-normalized. The auxiliary classifier acts on the embedding only during learning. The default optimizer is AdamW with learning rate $3\times10^{-4}$ and weight decay $10^{-4}$; dropout is 0.25, triplet margin 0.2, and identity-loss weight 0.3. Batches draw eight participants and three windows per first-visit condition for each, with 100 batches per epoch. Training runs for at most 40 epochs with patience seven, selecting a development-validation checkpoint. These settings describe the implemented run, not a claim of exhaustive hyperparameter optimization.
+
+\begin{figure*}[t]
+\centering\includegraphics[width=0.94\textwidth]{figures/model_pipeline}
+\caption{Population learning and normal-only enrollment are separate stages. The shared encoder maps two magnitude time series to 64-dimensional embeddings. DT recordings from unseen identities are used only as later-visit probes; the fixed fold threshold is chosen from unfused first-visit development scores.}
+\label{fig:system}
+\end{figure*}
+
+\subsection{Enrollment, scoring, and operating point}
+For each unseen user, the earliest 60\% of that user's ST-control windows form the only enrollment recording. The encoder maps them to 64-dimensional vectors. Their average is $L_2$-normalized to obtain one user template. A probe is compared with every claimed template; distance $d=\|z_{\mathrm{probe}}-z_{\mathrm{template}}\|_2$ is small for a likely match. On the unit sphere, Euclidean distance is monotonic in cosine similarity, so this is a consistent comparison score. Impostor attempts are generated by presenting each other evaluation participant's DT probes against the claimed participant's template. This is a closed-cohort impostor test; it does not include skilled mimicry or an external attack population.
+
+For each fold, one numerical threshold is chosen from held-out \emph{development} ST-control and ST-fatigue scores at an empirical 1\% FAR target. The same fold threshold applies to all four unseen users and both DT conditions; there is no user-specific or condition-specific threshold. Different outer folds necessarily learn different encoders and may yield different numerical thresholds. That is four repetitions of one protocol, not four operational settings chosen after observing a test condition.
+
+The evaluated variant averages the current and previous nine window-level distances for the same claimed user, probe user, and condition, then applies the \emph{unfused} development threshold. Ten 2-second windows at a 1-second hop cover 11 seconds at the first full decision; after that, a new rolling decision can be made each second. Averaging scores is causal: it uses no later windows for an earlier decision. The threshold and evaluation scores, however, are not processed symmetrically. We initially examined this choice because applying the same fusion to development scores placed the selected threshold in a range that produced very high rejection on the shifted test visit. The current result is an empirical operating-point choice; it should not be described as a generally calibrated fusion rule. A subsequent study should calibrate and test matched decision units on entirely untouched people.
+
+\section{Results}
+\subsection{Cross-visit fixed-threshold performance}
+Table~\ref{tab:proposed} gives the outer-fold aggregate. The 2-second, unfused magnitude model yields DT-control FRR/FAR of 20.35/15.01\% and DT-fatigue FRR/FAR of 44.97/15.29\%. With the 11-second score average, DT-control becomes 15.84/11.42\%; DT-fatigue becomes 45.99/12.14\%. Thus the longer decision decreases both DT-control error rates and DT-fatigue FAR, but DT-fatigue FRR rises by 1.02 percentage points. It would be misleading to call this a uniform improvement. The standard deviations remain large, particularly for FRR, indicating that several participant-level outcomes are not captured by the mean.
+
+\begin{table}[t]
+\caption{Unseen-user cross-visit results for the two-magnitude encoder. Percentages are participant macro-means (SD). EER is post-hoc score separability; FRR/FAR use the fixed development threshold.}
+\label{tab:proposed}
+\centering\scriptsize
+\begin{tabular}{llrrrrr}
+\toprule
+Decision & Condition & FRR & SD & FAR & SD & EER\\
+\midrule
+2 s, one window & DT-control & 20.35 & 28.66 & 15.01 & 14.40 & ---\\
+ & DT-fatigue & 44.97 & 38.89 & 15.29 & 16.05 & ---\\
+11 s, 10 windows & DT-control & 15.84 & 31.13 & 11.42 & 15.73 & 12.25\\
+ & DT-fatigue & 45.99 & 44.55 & 12.14 & 17.49 & 20.22\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering\includegraphics[width=\columnwidth]{figures/det_curves}
+\caption{Detection error trade-off on the later visit, pooling all comparisons. Reading both systems at a common false-acceptance rate removes the operating-point difference between them. The dotted diagonal marks equal error.}
+\label{fig:det}
+\end{figure}
+
+The EER values in Table~\ref{tab:proposed} are means of participant-specific evaluation EERs, not a single pooled EER. They cannot be substituted for the fixed-threshold FRR/FAR, since calculating EER requires the evaluation labels. In particular, a lower EER does not imply that an enrollment-calibrated threshold reaches equally low FRR and FAR on a later visit. Reporting both kinds of number makes that distinction visible.
+
+The originally studied six-axis deep input also matters as an ablation. That variant used the six raw IMU axes, without the derived magnitudes; its saved two-condition summary was 27.67/26.87\% for DT-control and 37.15/28.01\% for DT-fatigue (FRR/FAR, one-window decisions). Switching to two magnitudes reduced three of these four rates in that run, but DT-fatigue FRR worsened. This is consistent with a trade-off: removing axis orientation reduces one nuisance while possibly discarding direction-specific identity information. Because the six-axis and two-magnitude runs were produced during iterative development, this ablation is descriptive and should be repeated under an identically frozen protocol before a strong feature-selection claim.
+
+\subsection{Decision duration and operational cost}
+Table~\ref{tab:fusion} shows the explored causal averaging durations. On DT-control, longer averages progressively lower the macro-mean FRR and FAR. On DT-fatigue, FAR falls while FRR tends to rise after the shortest averages. The 10-window choice is a practical compromise in this observed cohort, not an unbiased optimum: it was chosen after examining the evaluation outcomes. An 11-second initial wait is also not free. It may be acceptable for a background check but is a poor substitute for immediate unlock, and correlated 1-second sliding decisions must not be mistaken for independent attempts. A full deployment study should define how repeated decisions trigger lockout, fallback, or re-authentication.
+
+\begin{table}[t]
+\caption{Exploratory magnitude-model fusion sweep on evaluation participants. FRR/FAR are macro-average percentages. Selection from this table reuses the evaluation set.}
+\label{tab:fusion}
+\centering\scriptsize
+\begin{tabular}{rrrrrr}
+\toprule
+Windows & Span & \multicolumn{2}{c}{DT-control} & \multicolumn{2}{c}{DT-fatigue}\\
+ & (s) & FRR & FAR & FRR & FAR\\
+\midrule
+1 & 2 & 20.35 & 15.01 & 44.97 & 15.29\\
+3 & 4 & 18.11 & 13.29 & 45.14 & 13.47\\
+5 & 6 & 16.67 & 12.34 & 45.72 & 12.86\\
+10 & 11 & 15.84 & 11.42 & 45.99 & 12.14\\
+15 & 16 & 15.50 & 11.13 & 46.81 & 11.71\\
+20 & 21 & 15.30 & 10.97 & 47.44 & 11.30\\
+30 & 31 & 14.95 & 10.79 & 47.95 & 10.88\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure*}[t]
+\centering\includegraphics[width=0.94\textwidth]{figures/fusion_sweep}
+\caption{Observed error--latency trade-off for two-magnitude score fusion. The dotted line marks the explored 11-second compromise. Durations were compared on the evaluation identities, so this is not a validation-selected hyperparameter curve.}
+\label{fig:fusion}
+\end{figure*}
+
+\subsection{How the two experiments relate}
+The SVM diagnoses the original problem across all four conditions. The population model targets a different question: whether seeing \emph{other users'} same-visit fatigue while learning a representation helps normal-enrolled unseen users on a later dual-task visit. Numerically, the fused model's mean FRR is below the SVM's on DT-control (15.84 versus 23.04\%) and DT-fatigue (45.99 versus 54.33\%). Its mean FAR is above the SVM's on DT-control (11.42 versus 10.15\%) and below it on DT-fatigue (12.14 versus 13.95\%). These are contextual figures, \emph{not} a clean percentage improvement from a single controlled intervention. The SVM has one model and threshold per participant and sees only ST-control in development; the population model sees development fatigue, enrolls unseen identities, uses one threshold per fold, and aggregates 11 seconds of scores. Any claim that one algorithm alone caused the difference requires a matched protocol with the same enrollment, calibration, impostor set, and decision duration.
+
+What is already defensible is narrower. Under normal-only enrollment, the proposed model can produce a measurable cross-visit verifier without any fatigue or DT sample from the new user. It lowers some observed false-rejection rates relative to the reference study, but still rejects almost half the legitimate DT-fatigue decisions at the chosen operating point. A practical system would need a safe fallback, additional sensing, or a better learned representation before deployment. The paper therefore treats robustness as an open empirical problem rather than declaring the task solved.
+
+\section{Discussion and Threats to Validity}
+\subsection{What can and cannot be attributed to the conditions}
+ST-control versus ST-fatigue is a same-visit comparison in the SVM assessment and directly exposes a post-fatigue recording contrast. DT-control and DT-fatigue are from another visit. Even if DT-control has lower FRR than ST-fatigue for a particular person, that does not invalidate the dataset or require that one recording be mislabeled: the walks are not a controlled trajectory along a single scalar ``difficulty'' axis. The later visit includes cognitive-task instructions, elapsed time, possible sensor reattachment, and natural day-to-day variation. Fatigue may also be expressed differently across the two visits. The protocol can establish which \emph{recorded condition} is harder for this verifier; it cannot decompose an isolated cognitive, time, and fatigue effect from these data alone. A future factorial design with matched same-day ST/DT recordings and multiple repeat visits would be needed for that causal claim.
+
+The magnitude choice deserves the same care. A vector norm is invariant to an ideal rigid rotation of the coordinate frame. It is not invariant to a changed walking style, a shifted sacrum attachment, or alterations in acceleration magnitude. Its favorable DT-control behavior in the observed run could reflect less orientation sensitivity; its higher DT-fatigue FRR could reflect the identity information lost with axis direction. The hypothesis can be tested with controlled rotation augmentation and a matched six-axis versus magnitude ablation, rather than explained retrospectively from rates alone.
+
+\begin{figure}[t]
+\centering\includegraphics[width=\columnwidth]{figures/score_distributions}
+\caption{Distance from the enrollment template for genuine and impostor comparisons, 11-second decisions. DT-control retains a visible separation; under DT-fatigue the two distributions overlap almost completely, which is why no single threshold performs well on that condition.}
+\label{fig:scores}
+\end{figure}
+
+\subsection{Calibration and security}
+A development FAR target of 1\% was not maintained on cross-visit evaluation. This is a central result, not a formatting issue. The threshold was calibrated from first-visit, unfused scores, whereas the fused test scores come from later-visit walks. A distribution shift can change genuine and impostor scores in different ways. Averaging reduces short-term noise but does not guarantee that the development threshold remains safe. An attacker test here consists only of other participants' natural walking; there is no imitation, replay, carried-device substitution, or adversarial perturbation. The reported FAR should therefore not be interpreted as resistance to active attacks. A secure system should assess presentation attacks and define conservative fallback behavior \cite{Jain2004,Abuhamad2020}.
+
+The use of overlapping windows also affects statistical interpretation. Guarding split boundaries protects against literal raw-sample overlap between learning and validation, but successive evaluation decisions remain correlated. The between-participant SD correctly shows heterogeneity but is not a precision estimate for a much larger population. Confidence intervals generated by resampling individual windows would be misleading. A future analysis should bootstrap at participant and recording level, keep each complete visit together, and publish detection-error trade-off curves and score files at predeclared operating points.
+
+\subsection{Sample size, selection, and generalizability}
+Sixteen participants and one laboratory protocol are not enough to establish field reliability. Four-fold participant-disjoint evaluation makes efficient use of the cohort, but each outer fold tests only four people, and the impostor population comes from the same small dataset. The sub-07 trim, selected input channels, architecture revisions, and 11-second fusion duration were all made during iterative investigation. The 10-window setting was explicitly selected after looking at evaluation results, so the fused result should be read as a hypothesis-generating estimate. The clean next experiment is to freeze the complete preprocessing, encoder, fusion, and threshold rule using development identities only and apply them once to a larger, newly collected cohort. More participants, repeated visits, varied walking speeds and sensor reattachments, and additional sites would test whether the current pattern survives beyond DUO-GAIT.
+
+There is also a publication-boundary issue. The SVM and encoder numbers should not be placed in a single ``percentage reduction'' claim until they are rerun with matched decision units and calibration. For example, one can compute the SVM's scores over the same 11-second segments and hold the same impostor attempts fixed, while independently calibrating both models without consulting evaluation labels. Only then is the difference attributable chiefly to the representation and training protocol. Without that control, Table~\ref{tab:svm} is the problem assessment and Table~\ref{tab:proposed} is an exploratory candidate response.
+
+\section{Reproducibility and Next Experiment}
+The source data are public through DUO-GAIT \cite{Zhou2023}. The implementation distinguishes processed raw windows from the SVM's statistical-feature tables: the neural model reads six-axis window files and derives two magnitude \emph{series} internally; it does not train on the 88-column feature matrix. This distinction is necessary to reproduce either result. The code records window start samples, block identifiers, participant IDs, conditions, fold assignments, model checkpoints, normalizer parameters, thresholds, and genuine/impostor comparison scores. The statistical baseline saves its own per-participant results and summary. Publishing de-identified score files, a participant-level protocol manifest, and the exact command line would make threshold behavior independently auditable. Any dataset-sharing restrictions and consent conditions should be checked before releasing derived artifacts.
+
+A pre-registered follow-up should have three stages. First, choose one decision duration, one score-processing rule, and one calibration criterion using development participants only. Development validation should use the same fused decision unit as evaluation, or a separately justified model of the shift; if this returns near-total rejection, the honest conclusion is that the method does not yet generalize at that operating point. Second, run a matched 11-second SVM and encoder comparison on a new locked test set, with identical claimed identities and impostor attempts. Third, assess failure by participant and recording, with enough repeated visits to separate day-to-day change from task and fatigue effects. This sequence directly addresses the limitations seen here without requiring a new user to provide fatigued enrollment data.
+
+\section{Conclusion}
+Gait collected from normal walking can look reliable until the same identity is probed under a different condition. In DUO-GAIT sacrum data, a chronological, user-specific statistical SVM has 1.49\% mean baseline FRR but much larger error on same-visit fatigue and later dual-task walks; its FAR rises as well. A population-trained two-magnitude encoder permits normal-only enrollment of unseen users and gives 15.84/11.42\% FRR/FAR on DT-control and 45.99/12.14\% on DT-fatigue at an exploratory 11-second decision. The latter result is a partial step, not a deployment-ready solution, and the fused operating point is not yet validated independently. The most important next result will be a predeclared, matched-protocol test on a larger set of people and visits. That test, not a more elaborate architecture alone, will determine whether the observed robustness is real.
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+\end{document}

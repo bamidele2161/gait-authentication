@@ -1,8 +1,0 @@
-{
-  "threshold": 1.1054943799972534,
-  "target_far": 0.01,
-  "validation_frr": 0.0011487650775416913,
-  "validation_far": 0.001305414860842776,
-  "genuine_count": 1741,
-  "impostor_count": 19151
-}
