@@ -381,12 +381,14 @@ def model_pipeline() -> None:
         enrol, probe = 2.28, 1.02
         _panel(ax, 0.35, enrol, 2.45, 0.66,
                "enrolment\nfull ST-control recording", fs=7.2)
-        _panel(ax, 3.20, enrol, 2.45, 0.66, "frozen encoder", fs=7.2)
-        _panel(ax, 6.05, enrol, 2.30, 0.66, "mean, $L_2$-normalised\ntemplate", fs=7.2)
+        _panel(ax, 3.20, enrol, 2.45, 0.66, "frozen encoder\n(shared weights)", fs=7.0)
+        _panel(ax, 6.05, enrol, 2.30, 0.66,
+               "64-D embeddings\n\u2192 mean, $L_2$-normalised", fs=7.0)
         _panel(ax, 0.35, probe, 2.45, 0.66,
                "probe\nDT-control or DT-fatigue", fill=WASH, fs=7.2)
-        _panel(ax, 3.20, probe, 2.45, 0.66, "frozen encoder", fs=7.2)
-        _panel(ax, 6.05, probe, 2.30, 0.66, "64-D embedding", fs=7.2)
+        _panel(ax, 3.20, probe, 2.45, 0.66, "frozen encoder\n(shared weights)", fs=7.0)
+        _panel(ax, 6.05, probe, 2.30, 0.66,
+               "64-D embedding\n(one per window)", fs=7.0)
         for y in (enrol, probe):
             for x0 in (2.80, 5.65):
                 _flow(ax, x0, y + 0.33, x0 + 0.40, y + 0.33)
