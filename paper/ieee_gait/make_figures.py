@@ -99,10 +99,10 @@ def fusion_sweep() -> None:
     sweep = pd.DataFrame(
         {
             "span": [2, 4, 6, 11, 16, 21, 31],
-            "dtc_frr": [20.35, 18.11, 16.67, 15.84, 15.50, 15.30, 14.95],
-            "dtc_far": [15.01, 13.29, 12.34, 11.42, 11.13, 10.97, 10.79],
-            "dtf_frr": [44.97, 45.14, 45.72, 45.99, 46.81, 47.44, 47.95],
-            "dtf_far": [15.29, 13.47, 12.86, 12.14, 11.71, 11.30, 10.88],
+            "dtc_frr": [20.95, 18.76, 17.27, 16.33, 15.98, 15.79, 15.42],
+            "dtc_far": [14.53, 12.88, 12.02, 11.41, 11.14, 10.89, 10.79],
+            "dtf_frr": [45.92, 46.37, 46.72, 47.55, 48.01, 48.48, 48.84],
+            "dtf_far": [15.30, 13.83, 13.44, 13.06, 12.84, 12.65, 12.46],
         }
     )
     # Verify the tabulated 11 s row against the saved per-window scores.
@@ -380,7 +380,7 @@ def model_pipeline() -> None:
               "Stage 2 · unseen-user verification (4 identities per fold)")
         enrol, probe = 2.28, 1.02
         _panel(ax, 0.35, enrol, 2.45, 0.66,
-               "enrolment\nST-control, first 60%", fs=7.2)
+               "enrolment\nfull ST-control recording", fs=7.2)
         _panel(ax, 3.20, enrol, 2.45, 0.66, "frozen encoder", fs=7.2)
         _panel(ax, 6.05, enrol, 2.30, 0.66, "mean, $L_2$-normalised\ntemplate", fs=7.2)
         _panel(ax, 0.35, probe, 2.45, 0.66,

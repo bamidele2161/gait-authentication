@@ -27,6 +27,7 @@ class TrainingConfig:
     learning_rate: float = 3e-4
     weight_decay: float = 1e-4
     margin: float = 0.2
+    soft_margin: bool = False
     identity_loss_weight: float = 0.3
     participants_per_batch: int = 8
     windows_per_condition: int = 3
@@ -106,7 +107,7 @@ def _run_batches(
                 optimizer.zero_grad()
             embeddings = encoder(tensor)
             metric_loss = session1_batch_hard_loss(
-                embeddings, labels, conditions, config.margin
+                embeddings, labels, conditions, config.margin, config.soft_margin
             )
             identity_loss = F.cross_entropy(classifier(embeddings), labels)
             total = metric_loss + config.identity_loss_weight * identity_loss

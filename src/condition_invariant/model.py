@@ -75,10 +75,16 @@ def session1_batch_hard_loss(
     identities: torch.Tensor,
     conditions: torch.Tensor,
     margin: float = 0.2,
+    soft_margin: bool = False,
 ) -> torch.Tensor:
     """Use ST-control anchors, farthest same-user positives, and closest impostors."""
     if margin <= 0:
         raise ValueError("margin must be positive")
+    # The hinge below reaches exactly zero once a positive sits `margin` closer
+    # than the nearest impostor, and the gradient dies with it. On unit-length
+    # embeddings that bar is cleared within ~15 epochs, after which training
+    # stops separating identities. The soft-margin form never saturates, so the
+    # encoder keeps pulling same-person windows together throughout training.
     distances = torch.cdist(embeddings, embeddings)
     same_person = identities[:, None].eq(identities[None, :])
     different_person = ~same_person
@@ -91,6 +97,7 @@ def session1_batch_hard_loss(
     valid = anchor_mask & torch.isfinite(hardest_positive) & torch.isfinite(hardest_negative)
     if not torch.any(valid):
         raise ValueError("Batch contains no valid ST-control anchors")
-    return F.relu(
-        hardest_positive[valid] - hardest_negative[valid] + margin
-    ).mean()
+    violation = hardest_positive[valid] - hardest_negative[valid]
+    if soft_margin:
+        return F.softplus(violation).mean()
+    return F.relu(violation + margin).mean()

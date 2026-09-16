@@ -34,7 +34,6 @@ from src.condition_invariant.dataset import GaitDataset, load_all_windows
 from src.condition_invariant.enrollment import (
     UserTemplate,
     create_user_template,
-    split_evaluation_st_control,
 )
 from src.condition_invariant.folds import (
     OuterFold,
@@ -68,8 +67,6 @@ class ExperimentConfig:
     training: TrainingConfig = TrainingConfig()
     number_of_folds: int = 4
     development_learning_fraction: float = 0.80
-    enrollment_fraction: float = 0.60
-    baseline_test_start_fraction: float = 0.80
     target_far: float = 0.01
     scoring_batch_size: int = 64
     device: str = "cpu"
@@ -172,7 +169,7 @@ def _evaluation_inputs(
 ]:
     """Prepare unseen-user enrolment and probe data.
 
-    Enrolment : ST-control chronological early portion only.
+    Enrolment : complete ST-control recording only.
     Probes    : session-2 DT-control and DT-fatigue only.
     """
 
@@ -182,12 +179,15 @@ def _evaluation_inputs(
     }
     for pid in fold.evaluation_participants:
         participant_data = dataset[pid]
-        split = split_evaluation_st_control(
-            tuple(participant_data["st_control"]),
-            enrollment_fraction=config.enrollment_fraction,
-            test_start_fraction=config.baseline_test_start_fraction,
+        # Evaluation participants are completely unseen during development.
+        # Their full normal-walking recording is therefore enrollment data:
+        # no ST-control window is reserved for model fitting or evaluation.
+        enrollment_windows[pid] = tuple(
+            sorted(
+                participant_data["st_control"],
+                key=lambda window: window.start_sample,
+            )
         )
-        enrollment_windows[pid]       = split.enrollment_windows
         for condition in EVALUATION_CONDITIONS:
             probes[condition][pid] = tuple(
                 sorted(participant_data[condition], key=lambda w: w.start_sample)
@@ -492,6 +492,12 @@ def main() -> None:
     parser.add_argument("--device",            default="cpu")
     parser.add_argument("--target-far",        type=float, default=0.01)
     parser.add_argument("--fold",              type=int,   choices=(1, 2, 3, 4))
+    parser.add_argument("--margin", type=float, default=0.2)
+    parser.add_argument(
+        "--soft-margin", action="store_true",
+        help="use softplus(d_p - d_n) instead of the hinge, so the triplet "
+             "objective never saturates",
+    )
     parser.add_argument(
         "--fusion-window", type=int, default=10,
         help="consecutive 2s probe windows averaged per decision; n spans "
@@ -508,6 +514,8 @@ def main() -> None:
         windows_per_condition=args.windows_per_condition,
         validation_batches=args.validation_batches,
         identity_loss_weight=args.identity_loss_weight,
+        margin=args.margin,
+        soft_margin=args.soft_margin,
     )
     experiment = ExperimentConfig(
         training=training,
@@ -517,8 +525,10 @@ def main() -> None:
         fusion_window=args.fusion_window,
     )
     method_name = "session1_cnn_bilstm_hard"
-    if args.folds != 4:
-        method_name = f"{method_name}_{args.folds}fold"
+    if args.soft_margin:
+        method_name = f"{method_name}_softmargin"
+    elif args.margin != 0.2:
+        method_name = f"{method_name}_margin{args.margin}"
     if args.fusion_window > 1:
         method_name = f"{method_name}_fusion{args.fusion_window}"
     output_name = (
