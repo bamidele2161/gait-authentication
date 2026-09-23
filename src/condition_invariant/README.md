@@ -18,7 +18,9 @@ It is intentionally separate from the existing statistical-feature RBF-SVM basel
 1. Split participants into 12 development and 4 evaluation identities per fold.
 2. Use only session-1 ST-control and ST-fatigue from development identities;
    split those recordings chronologically into learning and validation.
-3. Fit six-channel normalization on development-learning windows only.
+3. Convert each stored six-axis window to acceleration and gyroscope
+   magnitude time series, then fit two-channel normalization on
+   development-learning windows only.
 4. Encode each window with three temporal convolutions, a bidirectional LSTM,
    attention/max pooling, and a 64-D L2-normalized projection.
 5. In each balanced session-1 batch, treat ST-control windows as anchors. Online
@@ -26,13 +28,15 @@ It is intentionally separate from the existing statistical-feature RBF-SVM basel
    and closest other-person ST-control/ST-fatigue negative for every anchor.
 6. Optimize batch-hard metric loss plus a temporary development-identity
    classification loss. The classifier is discarded after encoder training.
-7. Enrol each unseen evaluation user using ST-control windows only; average and
-   L2-normalize those embeddings to create one template.
+7. Enrol each unseen evaluation user using their complete ST-control recording;
+   average and L2-normalize those embeddings to create one template.
 8. Compare every probe with the claimed template using Euclidean distance.
    Because embeddings have unit length, this gives the same ordering as cosine
    distance.
 9. Select one shared threshold using session-1 development-validation scores,
    freeze it, and apply it unchanged to DT-control and DT-fatigue from session 2.
+10. Optionally average consecutive probe distances causally. The reported
+    fused configuration uses 10 overlapping windows, spanning 11 seconds.
 
 DT-control and DT-fatigue are never used for encoder training, normalization,
 validation, early stopping, or threshold calibration. There is no per-user SVM,
