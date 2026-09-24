@@ -1,106 +1,76 @@
-import numpy as np
-import pandas as pd
+"""Extract time-domain statistical features from sacrum IMU windows."""
+
 import os
 import sys
 
+import numpy as np
+import pandas as pd
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from src.utils import (
-   SENSOR_COLS, SESSIONS, WINDOW_DIR, FEATURE_DIR,
+from src.utils import (  # noqa: E402
+    FEATURE_COLS, FEATURE_DIR, SENSOR_COLS, SESSIONS, WINDOW_DIR,
 )
+
+
+def statistical_features(signal):
+    mean = np.mean(signal)
+    std = np.std(signal)
+    centered = signal - mean
+    safe_std = std if std > 1e-12 else 1.0
+    q25, median, q75 = np.percentile(signal, [25, 50, 75])
+    return {
+        "mean": mean,
+        "std": std,
+        "median": median,
+        "min": np.min(signal),
+        "max": np.max(signal),
+        "range": np.ptp(signal),
+        "iqr": q75 - q25,
+        "mad": np.median(np.abs(signal - median)),
+        "rms": np.sqrt(np.mean(np.square(signal))),
+        "skewness": np.mean((centered / safe_std) ** 3) if std > 1e-12 else 0.0,
+        "kurtosis": np.mean((centered / safe_std) ** 4) - 3 if std > 1e-12 else 0.0,
+    }
+
+
 def extract_features_window(window):
+    signals = {name: window[:, index] for index, name in enumerate(SENSOR_COLS)}
+    signals["AccMag"] = np.linalg.norm(window[:, 3:6], axis=1)
+    signals["GyrMag"] = np.linalg.norm(window[:, 0:3], axis=1)
+
     features = {}
-
-    for axis_index, axis_name in enumerate(SENSOR_COLS):
-        signal = window[:, axis_index]
-
-        features[f"{axis_name}_mean"] = np.mean(signal)
-        features[f"{axis_name}_std"] = np.std(signal)
-        features[f"{axis_name}_var"] = np.var(signal)
-        features[f"{axis_name}_energy"] = np.sum(signal ** 2)
-        features[f"{axis_name}_rms"] = np.sqrt(np.mean(signal ** 2))
-        features[f"{axis_name}_min"] = np.min(signal)
-        features[f"{axis_name}_max"] = np.max(signal)
-        
+    for name, signal in signals.items():
+        for stat, value in statistical_features(signal).items():
+            features[f"{name}_{stat}"] = value
     return features
-        
-def extract_features_for_participant(npy_path, csv_path):
-    windows = np.load(npy_path)
-    labels = pd.read_csv(csv_path)
 
-    if windows.shape[0] != len(labels):
-        print(f"[Warning] Mismatch between windows and labels for {npy_path.name}")
-        return None
-    n_windows = windows.shape[0]
-    print(f" Windows loaded : {n_windows} shape={windows.shape}")
-
-    all_feature_rows = []
-
-    for i in range(n_windows):
-        window = windows[i]
-
-        features_row = extract_features_window(window)
-
-        features_row['window_index'] = labels['window_index'].iloc[i]
-        features_row['participant_id'] = labels['participant_id'].iloc[i]
-        features_row['session_type'] = labels['session_type'].iloc[i]
-
-        all_feature_rows.append(features_row)
-
-    features_df = pd.DataFrame(all_feature_rows)
-
-    return features_df
-            
 
 def process_session(session_name):
-
     windows_dir = WINDOW_DIR / session_name
     output_dir = FEATURE_DIR / session_name
-
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    npy_files = sorted(windows_dir.glob("*_windows.npy"))
-
-    if not npy_files:
-        print(f"[Warning]: No npy files found in {windows_dir}")
-        return
-    
-    for npy_path in npy_files:
-
+    for npy_path in sorted(windows_dir.glob("*_windows.npy")):
         participant_id = npy_path.stem.replace("_windows", "")
+        labels_path = windows_dir / f"{participant_id}_labels.csv"
+        windows = np.load(npy_path)
+        labels = pd.read_csv(labels_path)
+        if len(windows) != len(labels):
+            raise ValueError(f"Window/label mismatch for {participant_id}")
 
-        csv_path = windows_dir / f"{participant_id}_labels.csv"
-
-        if not csv_path.exists():
-            print(f"[Warning]: No csv file found for {participant_id}")
-            continue
-        
-        features_df = extract_features_for_participant(npy_path, csv_path)
-
-        if features_df is None:
-            continue
-
-        output_path = output_dir / f"{participant_id}_features.csv"
-
-        features_df.to_csv(output_path, index=False)
-
-        print(f"Features saved to: {output_path}")
+        feature_rows = [extract_features_window(window) for window in windows]
+        features = pd.DataFrame(feature_rows, columns=FEATURE_COLS)
+        features = pd.concat([features, labels.reset_index(drop=True)], axis=1)
+        features.to_csv(output_dir / f"{participant_id}_features.csv", index=False)
+        print(f"{session_name:12s} {participant_id}: {len(features)} feature rows")
 
 
 def main():
-    n_features = len(SENSOR_COLS) * 7
-    print("=" * 60)
-    print("DUO-GAIT  |  Feature Extraction")
-    print("=" * 60)
-    print(f"  Axes      : {SENSOR_COLS}")
-    print(f"  Total     : {n_features} features per window")
-    print(f"  Input     : {WINDOW_DIR}") 
-    print(f"  Output    : {FEATURE_DIR}")
-
+    print(f"Extracting {len(FEATURE_COLS)} sacrum time-domain features")
     for session in SESSIONS:
-        print(f"Checking session: {session}...") 
         process_session(session)
+    print(f"Features saved under {FEATURE_DIR}")
 
-    print("\nProcessing complete.")
 
 if __name__ == "__main__":
     main()

@@ -1,5 +1,12 @@
 gait_data.csv
 
+# Python virtual environments
+venv/
+.venv/
+.venv-run/
+env/
+ENV/
+
 *.pkl
 
 __pycache__/
@@ -14,3 +21,10 @@ __pycache__/
 *_windows.npy
 
 *_holdout.npz
+
+
+venv/
+.venv/
+.venv-run/
+env/
+ENV/

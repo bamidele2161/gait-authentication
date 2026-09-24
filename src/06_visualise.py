@@ -12,8 +12,9 @@ warnings.filterwarnings('ignore')
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.utils import (
-    RESULTS_DIR, FEATURE_COLS, FEATURE_DIR, FEATURES_DIR, MODELS_DIR, ST_FATIGUE_FEATURES,
-    COLOR_BASELINE, COLOR_CROSS, COLOR_DELTA, FIGURES_DIR
+    RESULTS_DIR, FEATURE_COLS, FEATURE_DIR, FEATURES_DIR, MODELS_DIR,
+    ST_FATIGUE_FEATURES, DT_CONTROL_FEATURES, DT_FATIGUE_FEATURES,
+    COLOR_BASELINE, COLOR_CROSS, COLOR_DELTA, FIGURES_DIR, COLOR_DT_CONTROL, COLOR_DT_FATIGUE
 )
 
 def save_figure(fig, filename):
@@ -45,232 +46,245 @@ def plot_frr_comparison(results_df):
     participants = results_df['participant_id'].tolist()
     frr_baseline = results_df['frr_baseline'].tolist()
     frr_cross = results_df['frr_cross_session'].tolist()
+    frr_dt_control = results_df['frr_dt_control'].tolist()
+    frr_dt_fatigue = results_df['frr_dt_fatigue'].tolist()
     
     n = len(participants)
     x = np.arange(n)
 
-    bar_width = 0.35
+    bar_width = 0.2
 
-    fig, ax = plt.subplots(figsize=(14, 6))
+    fig, ax = plt.subplots(figsize=(14, 8))
 
-    bars_baseline = ax.bar(
-        x - bar_width / 2,
+    ax.bar(
+        x - 1.5 * bar_width,
         frr_baseline,
         width = bar_width,
         color = COLOR_BASELINE,
-        label = 'Baseline FRR (S1 -> S1)',
+        label = 'Baseline FRR (ST-CONTROL)',
         alpha = 0.85
     )
 
-    bars_cross = ax.bar(
-        x + bar_width / 2,
+    ax.bar(
+        x - 0.5 * bar_width,
         frr_cross,
         width = bar_width,
         color = COLOR_CROSS,
-        label = 'Cross-Session FRR (S1 -> S2)',
+        label = 'Cross-Session FRR (ST-FATIGUE)',
         alpha = 0.85
     )
+
+    ax.bar(
+        x + 0.5 * bar_width,
+        frr_dt_control,
+        width = bar_width,
+        color = COLOR_DT_CONTROL,
+        label = 'DT Control FRR (+ Cognitive Task)',
+        alpha = 0.85
+    )
+
+    ax.bar(
+        x + 1.5 * bar_width,
+        frr_dt_fatigue,
+        width = bar_width,
+        color = COLOR_DT_FATIGUE,
+        label = 'DT Fatigue FRR (+ Fatigue + Cognitive Task)',
+        alpha = 0.85
+    )
+
+    ax.axhline(np.mean(frr_baseline),   color=COLOR_BASELINE, linestyle='--',
+               linewidth=1.0, alpha=0.6, label=f'Mean Baseline: {np.mean(frr_baseline):.1%}')
+    ax.axhline(np.mean(frr_cross),      color=COLOR_CROSS,    linestyle='--',
+               linewidth=1.0, alpha=0.6, label=f'Mean ST-Fatigue: {np.mean(frr_cross):.1%}')
+    ax.axhline(np.mean(frr_dt_control), color='#FF9800',      linestyle='--',
+               linewidth=1.0, alpha=0.6, label=f'Mean DT-Control: {np.mean(frr_dt_control):.1%}')
+    ax.axhline(np.mean(frr_dt_fatigue), color='#8B0000',      linestyle='--',
+               linewidth=1.0, alpha=0.6, label=f'Mean DT-Fatigue: {np.mean(frr_dt_fatigue):.1%}')
 
     ax.set_xlabel('Participant', fontsize=12)
     ax.set_ylabel('False Rejection Rate (FRR)', fontsize=12)
     ax.set_title(
-        'Per-Participant FRR: Baseline vs Cross-Session\n'
-        'Lower FRR = Better Authentication Performance',
+        'Per-Participant FRR Across All Four Test Conditions\n'
+        'Temporal Variation  |  Cognitive Load  |  Physical Fatigue',
         fontsize=13, fontweight='bold'
     )
-
     ax.set_xticks(x)
-
     ax.set_xticklabels(participants, rotation=45, ha='right', fontsize=9)
-
     ax.set_ylim(0, 1.05)
-
     ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f'{y:.0%}'))
-
-    ax.axhline(y=np.mean(frr_baseline), color=COLOR_BASELINE, 
-    linestyle='--', linewidth=1.2, alpha=0.7, label=f"  Mean Baseline FRR: {np.mean(frr_baseline):.1%}")
-
-    ax.axhline(y=np.mean(frr_cross), color=COLOR_CROSS, 
-    linestyle='--', linewidth=1.2, alpha=0.7, label=f"  Mean Cross-Session FRR: {np.mean(frr_cross):.1%}")
-
-    ax.legend(fontsize=10, loc='upper right')
-
+    ax.legend(fontsize=9, loc='upper left', ncol=2)
     ax.grid(axis='y', linestyle='--', alpha=0.3)
-
     plt.tight_layout()
-
     save_figure(fig, '01_frr_comparison.png')
 
 
 def plot_frr_delta(results_df):
-    df_sorted =results_df.sort_values('frr_delta', ascending=True)
+    participants = results_df['participant_id'].tolist()
 
-    participants = df_sorted['participant_id'].tolist()
-    deltas = df_sorted['frr_delta'].tolist()
+    delta_st  = results_df['frr_cross_session'].tolist()  
+    delta_dtc = (results_df['frr_dt_control'] - results_df['frr_baseline']).tolist()
+    delta_dtf = (results_df['frr_dt_fatigue'] - results_df['frr_baseline']).tolist()
 
-    colors = [COLOR_DELTA if d > 0 else '#4C4F50' for d in deltas]
+    n  = len(participants)
+    y  = np.arange(n)
+    bh = 0.25 
 
-    fig, ax = plt.subplots(figsize=(10, 7))
+    fig, ax = plt.subplots(figsize=(12, 8))
 
-    bars = ax.barh(participants, deltas, color=colors, alpha=0.85, edgecolor='white')
+    ax.barh(y + bh,  delta_st,  height=bh, color=COLOR_CROSS, alpha=0.85,
+            label='ST-Fatigue − Baseline (temporal variation)')
+    ax.barh(y,       delta_dtc, height=bh, color='#FF9800',   alpha=0.85,
+            label='DT-Control − Baseline (+ cognitive load)')
+    ax.barh(y - bh,  delta_dtf, height=bh, color='#8B0000',   alpha=0.85,
+            label='DT-Fatigue − Baseline (+ fatigue + cognitive)')
 
-    for bar, delta in zip(bars, deltas):
-        x_pos = bar.get_width()
-        ax.text(
-            x_pos + 0.005,
-            bar.get_y() + bar.get_height() / 2,
-            f'{delta:+.3f}',
-            va='center',
-            ha='left',
-            fontsize=8,
-        )
-
+    ax.set_yticks(y)
+    ax.set_yticklabels(participants, fontsize=9)
     ax.axvline(x=0, color='black', linewidth=0.8)
- 
-    ax.set_xlabel('FRR Delta (Cross-Session − Baseline)', fontsize=12)
+    ax.set_xlabel('FRR Delta vs Baseline', fontsize=12)
     ax.set_ylabel('Participant', fontsize=12)
     ax.set_title(
-        'FRR Degradation per Participant\n'
-        'Positive = FRR increased (worse authentication) across sessions',
+        'FRR Degradation per Participant — All Conditions vs Baseline\n'
+        'Shows compounding effect of temporal variation, cognitive load, and fatigue',
         fontsize=13, fontweight='bold'
     )
- 
     ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{x:+.0%}'))
- 
+    ax.legend(fontsize=10, loc='lower right')
     ax.grid(axis='x', alpha=0.3, linestyle='--')
-    n_degraded = sum(1 for d in deltas if d > 0)
-    ax.text(0.98, 0.02,
-            f'{n_degraded}/{len(deltas)} participants degraded',
-            transform=ax.transAxes,
-            ha='right', va='bottom', fontsize=10,
-            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
- 
     fig.tight_layout()
     save_figure(fig, '02_frr_delta.png')
-    
+
+
 def plot_boxplot(results_df):
+    frr_baseline   = results_df['frr_baseline'].tolist()
+    frr_cross      = results_df['frr_cross_session'].tolist()
+    frr_dt_control = results_df['frr_dt_control'].tolist()
+    frr_dt_fatigue = results_df['frr_dt_fatigue'].tolist()
 
-    frr_baseline = results_df['frr_baseline'].tolist()
-    frr_cross    = results_df['frr_cross_session'].tolist()
- 
-    fig, ax = plt.subplots(figsize=(8, 7))
- 
+    data    = [frr_baseline, frr_cross, frr_dt_control, frr_dt_fatigue]
+    labels  = ['Baseline\n(ST-Control)', 'Cross-Session\n(ST-Fatigue)',
+               'DT-Control\n(+ cognitive)', 'DT-Fatigue\n(+ fatigue)']
+    colours = [COLOR_BASELINE, COLOR_CROSS, '#FF9800', '#8B0000']
+
+    fig, ax = plt.subplots(figsize=(11, 7))
+
     bp = ax.boxplot(
-        [frr_baseline, frr_cross],
-        labels    = ['Baseline\n(S1 → S1)', 'Cross-Session\n(S1 → S2)'],
-        patch_artist = True,
-        widths    = 0.5,
-        medianprops = dict(color='black', linewidth=2),
+        data, labels=labels,
+        patch_artist=True, widths=0.5,
+        medianprops=dict(color='black', linewidth=2),
     )
 
+    for patch, colour in zip(bp['boxes'], colours):
+        patch.set_facecolor(colour)
+        patch.set_alpha(0.7)
 
-    bp['boxes'][0].set_facecolor(COLOR_BASELINE)
-    bp['boxes'][0].set_alpha(0.7)
-    bp['boxes'][1].set_facecolor(COLOR_CROSS)
-    bp['boxes'][1].set_alpha(0.7)
-    
-    for i, (data, colour) in enumerate(
-        [(frr_baseline, COLOR_BASELINE), (frr_cross, COLOR_CROSS)], start=1
-    ):
-        x_jitter = np.random.normal(i, 0.04, size=len(data))
-        ax.scatter(x_jitter, data, color=colour, alpha=0.6, s=40, zorder=3)
- 
-    ax.set_ylabel('False Rejection Rate (FRR)', fontsize=12)
-    ax.set_title(
-        'Distribution of FRR Across Participants\n'
-        'Baseline vs Cross-Session',
-        fontsize=13, fontweight='bold'
-    )
- 
-    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f'{y:.0%}'))
-    ax.grid(axis='y', alpha=0.3, linestyle='--')
- 
-    for i, (data, label) in enumerate(
-        [(frr_baseline, 'Mean'), (frr_cross, 'Mean')], start=1
-    ):
-        mean_val = np.mean(data)
+
+    for i, (d, colour) in enumerate(zip(data, colours), start=1):
+        x_jitter = np.random.normal(i, 0.04, size=len(d))
+        ax.scatter(x_jitter, d, color=colour, alpha=0.6, s=40, zorder=3)
+
+
+    for i, d in enumerate(data, start=1):
+        mean_val = np.mean(d)
         ax.text(i, mean_val + 0.02, f'μ={mean_val:.1%}',
                 ha='center', fontsize=9, color='black', fontweight='bold')
- 
-    ax.annotate(
-        f'p = 0.0003\n(Wilcoxon)',
-        xy         = (1.5, max(frr_cross) * 0.95),
-        ha         = 'center',
-        fontsize   = 10,
-        color      = 'darkred',
-        fontweight = 'bold',
-        bbox       = dict(boxstyle='round', facecolor='lightyellow', alpha=0.8)
+
+    ax.set_ylabel('False Rejection Rate (FRR)', fontsize=12)
+    ax.set_title(
+        'FRR Distribution Across All Four Conditions\n'
+        'Each dot = one participant',
+        fontsize=13, fontweight='bold'
     )
- 
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f'{y:.0%}'))
+    ax.set_ylim(0, 1.12)
+    ax.grid(axis='y', alpha=0.3, linestyle='--')
     fig.tight_layout()
     save_figure(fig, '03_boxplot.png')
- 
- 
+
+
  
 def plot_confusion_matrices(results_df):
- 
-    fatigue_dir = FEATURE_DIR / "st_fatigue"
-    dfs         = [pd.read_csv(f) for f in sorted(fatigue_dir.glob("*_features.csv"))]
-    all_fatigue = pd.concat(dfs, ignore_index=True)
- 
+    """Generate one confusion-matrix grid figure per test condition (4 total)."""
+
+    def _load_features(feat_dir):
+        dfs = [pd.read_csv(f) for f in sorted(feat_dir.glob("*_features.csv"))]
+        return pd.concat(dfs, ignore_index=True)
+
+    all_st_fatigue = _load_features(ST_FATIGUE_FEATURES)
+    all_dt_control = _load_features(DT_CONTROL_FEATURES)
+    all_dt_fatigue = _load_features(DT_FATIGUE_FEATURES)
+
+    # (condition label, filename suffix, feature_df or None=use holdout)
+    conditions = [
+        ('Baseline (ST-Control — holdout)',         '04a_cm_baseline.png',   None),
+        ('Cross-Session (ST-Fatigue)',               '04b_cm_st_fatigue.png', all_st_fatigue),
+        ('DT-Control (+ Cognitive Task)',            '04c_cm_dt_control.png', all_dt_control),
+        ('DT-Fatigue (+ Fatigue + Cognitive Task)',  '04d_cm_dt_fatigue.png', all_dt_fatigue),
+    ]
+
     participants = results_df['participant_id'].tolist()
-    n            = len(participants)
- 
+    n    = len(participants)
     ncols = 4
-    nrows = int(np.ceil(n / ncols))   
- 
-    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * 3.5, nrows * 3.2))
-    axes_flat  = axes.flatten()
- 
-    fig.suptitle(
-        'Confusion Matrices — Cross-Session Evaluation (S1 → S2)',
-        fontsize=14, fontweight='bold', y=1.01
-    )
- 
-    for idx, participant_id in enumerate(participants):
- 
-        ax = axes_flat[idx]
- 
-        svm    = joblib.load(MODELS_DIR / f"{participant_id}_svm.pkl")
-        scaler = joblib.load(MODELS_DIR / f"{participant_id}_scaler.pkl")
- 
-        X = all_fatigue[FEATURE_COLS].values
-        y = (all_fatigue['participant_id'] == participant_id).astype(int).values
- 
-        X_scaled = scaler.transform(X)
-        y_pred   = svm.predict(X_scaled)
- 
-        cm = confusion_matrix(y, y_pred, labels=[1, 0])
- 
-        im = ax.imshow(cm, interpolation='nearest', cmap='Blues')
-        im = ax.imshow(cm, interpolation='nearest', cmap='Blues')
- 
-        for row in range(2):
-            for col in range(2):
-                value = cm[row, col]
-                text_colour = 'white' if value > cm.max() / 2 else 'black'
-                ax.text(col, row, str(value),
+    nrows = int(np.ceil(n / ncols))
+
+    def _draw_cm(ax, cm, pid):
+        """Draw a single confusion-matrix cell onto ax."""
+        ax.imshow(cm, interpolation='nearest', cmap='Blues')
+
+        for r in range(2):
+            for c in range(2):
+                val = cm[r, c]
+                colour = 'white' if val > cm.max() / 2 else 'black'
+                ax.text(c, r, str(val),
                         ha='center', va='center',
-                        fontsize=11, fontweight='bold', color=text_colour)
- 
+                        fontsize=11, fontweight='bold', color=colour)
+
         ax.set_xticks([0, 1])
         ax.set_yticks([0, 1])
-        ax.set_xticklabels(['Accepted\n(Predicted +)', 'Rejected\n(Predicted −)'], fontsize=7)
+        ax.set_xticklabels(['Accepted\n(Pred +)', 'Rejected\n(Pred −)'], fontsize=7)
         ax.set_yticklabels(['Legitimate\n(True +)', 'Impostor\n(True −)'], fontsize=7)
- 
-        tp = cm[0, 0]
-        fn = cm[0, 1]
-        frr = fn / (tp + fn) if (tp + fn) > 0 else 0
-        fp = cm[1, 0]
-        tn = cm[1, 1]
-        far = fp / (fp + tn) if (fp + tn) > 0 else 0
-        ax.set_title(f'{participant_id}\nFRR={frr:.3%}\nFAR={far:.3%}', fontsize=9, fontweight='bold')
- 
-    for idx in range(n, len(axes_flat)):
-        axes_flat[idx].set_visible(False)
- 
-    fig.tight_layout()
-    save_figure(fig, '04_confusion_matrices.png')
+
+        tp  = cm[0, 0]; fn = cm[0, 1]
+        fp  = cm[1, 0]; tn = cm[1, 1]
+        frr = fn / (tp + fn) if (tp + fn) > 0 else 0.0
+        far = fp / (fp + tn) if (fp + tn) > 0 else 0.0
+        ax.set_title(f'{pid}\nFRR={frr:.2%} | FAR={far:.2%}',
+                     fontsize=8, fontweight='bold')
+
+    for cond_label, filename, feat_df in conditions:
+
+        fig, axes = plt.subplots(nrows, ncols,
+                                 figsize=(ncols * 3.5, nrows * 3.2))
+        axes_flat = axes.flatten()
+
+        fig.suptitle(
+            f'Confusion Matrices — {cond_label}\nEach cell = one participant',
+            fontsize=13, fontweight='bold', y=1.01
+        )
+
+        for idx, pid in enumerate(participants):
+            svm    = joblib.load(MODELS_DIR / f"{pid}_svm.pkl")
+            scaler = joblib.load(MODELS_DIR / f"{pid}_scaler.pkl")
+
+            if feat_df is None:
+                # Baseline: held-out split saved during training
+                holdout  = np.load(MODELS_DIR / f"{pid}_holdout.npz")
+                X, y     = holdout['X'], holdout['y']
+                y_pred   = svm.predict(X)
+            else:
+                X_raw  = feat_df[FEATURE_COLS].values
+                y      = (feat_df['participant_id'] == pid).astype(int).values
+                X_sc   = scaler.transform(X_raw)
+                y_pred = svm.predict(X_sc)
+
+            cm = confusion_matrix(y, y_pred, labels=[1, 0])
+            _draw_cm(axes_flat[idx], cm, pid)
+
+        for idx in range(n, len(axes_flat)):
+            axes_flat[idx].set_visible(False)
+
+        fig.tight_layout()
+        save_figure(fig, filename)
  
 def plot_far_comparison(results_df):
     participants = results_df['participant_id'].tolist()
@@ -281,7 +295,7 @@ def plot_far_comparison(results_df):
     x = np.arange(n)
     bar_width = 0.35
 
-    fig, ax = plt.subplots(figsize=(14, 6))
+    fig, ax = plt.subplots(figsize=(14, 8))
 
     ax.bar(x - bar_width/2, far_baseline, width=bar_width,
            color='#2196F3', alpha=0.85, label='Baseline FAR (S1 → S1)')
@@ -313,50 +327,71 @@ def plot_far_comparison(results_df):
 
 
 def plot_frr_far_summary(results_df):
-    categories  = ['Baseline\nFRR', 'Baseline\nFAR',
-                   'Cross-Session\nFRR', 'Cross-Session\nFAR']
-    means = [
+    conditions = ['Baseline\n(ST-Control)', 'ST-Fatigue\n(cross-session)',
+                  'DT-Control\n(+ cognitive)', 'DT-Fatigue\n(+ fatigue)']
+
+    frr_means = [
         np.mean(results_df['frr_baseline']),
-        np.mean(results_df['far_baseline']),
         np.mean(results_df['frr_cross_session']),
+        np.mean(results_df['frr_dt_control']),
+        np.mean(results_df['frr_dt_fatigue']),
+    ]
+    far_means = [
+        np.mean(results_df['far_baseline']),
         np.mean(results_df['far_cross_session']),
+        np.mean(results_df['far_dt_control']),
+        np.mean(results_df['far_dt_fatigue']),
     ]
-    stds = [
+    frr_stds = [
         np.std(results_df['frr_baseline']),
-        np.std(results_df['far_baseline']),
         np.std(results_df['frr_cross_session']),
-        np.std(results_df['far_cross_session']),
+        np.std(results_df['frr_dt_control']),
+        np.std(results_df['frr_dt_fatigue']),
     ]
-    colours = ['#2196F3', '#4CAF50', '#F44336', '#FF9800']
+    far_stds = [
+        np.std(results_df['far_baseline']),
+        np.std(results_df['far_cross_session']),
+        np.std(results_df['far_dt_control']),
+        np.std(results_df['far_dt_fatigue']),
+    ]
 
-    fig, ax = plt.subplots(figsize=(9, 6))
-    bars = ax.bar(categories, means, color=colours, alpha=0.85,
-                  yerr=stds, capsize=6, edgecolor='white', linewidth=0.8)
+    x         = np.arange(len(conditions))
+    bar_width = 0.35
 
-    for bar, mean, std in zip(bars, means, stds):
+    fig, ax = plt.subplots(figsize=(12, 8))
+
+    bars_frr = ax.bar(x - bar_width/2, frr_means, bar_width,
+                      yerr=frr_stds, capsize=5,
+                      color=[COLOR_CROSS, COLOR_CROSS, COLOR_CROSS, COLOR_CROSS,],
+                      alpha=0.85, label='FRR (user locked out)')
+    bars_far = ax.bar(x + bar_width/2, far_means, bar_width,
+                      yerr=far_stds, capsize=5,
+                      color=[ '#8B0000', '#8B0000', '#8B0000', '#8B0000', '#8B0000'],
+                      alpha=0.85, label='FAR (impostor accepted)',
+                      edgecolor='grey', linewidth=0.5)
+
+    for bar, mean, std in zip(bars_frr, frr_means, frr_stds):
         ax.text(bar.get_x() + bar.get_width()/2,
                 mean + std + 0.015,
                 f'{mean:.1%}',
-                ha='center', va='bottom', fontsize=10, fontweight='bold')
+                ha='center', va='bottom', fontsize=9, fontweight='bold')
 
+    ax.set_xticks(x)
+    ax.set_xticklabels(conditions, fontsize=10)
     ax.set_ylabel('Error Rate', fontsize=12)
     ax.set_title(
-        'Authentication Error Rates — Full Summary\n'
-        'FRR = user locked out  |  FAR = impostor let in',
+        'FRR and FAR Across All Four Test Conditions\n'
+        'FRR = user locked out  |  FAR = impostor accepted',
         fontsize=13, fontweight='bold'
     )
-    ax.set_ylim(0, max(means) + max(stds) + 0.12)
+    ax.set_ylim(0, max(frr_means) + max(frr_stds) + 0.15)
     ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f'{y:.0%}'))
+    ax.legend(fontsize=10)
     ax.grid(axis='y', alpha=0.3, linestyle='--')
-    
-    ax.axvline(x=1.5, color='black', linewidth=0.8, linestyle=':', alpha=0.5)
-    ax.text(0.5, ax.get_ylim()[1]*0.95, 'Baseline', ha='center',
-            fontsize=9, color='#555', style='italic')
-    ax.text(2.5, ax.get_ylim()[1]*0.95, 'Cross-Session', ha='center',
-            fontsize=9, color='#555', style='italic')
     fig.tight_layout()
     save_figure(fig, '06_frr_far_summary.png')
- 
+
+
 def plot_eer_comparison(eer_df):
     df_sorted    = eer_df.sort_values('eer_cross', ascending=True)
     participants = df_sorted['participant_id'].tolist()
@@ -395,78 +430,89 @@ def plot_eer_comparison(eer_df):
     save_figure(fig, '07_eer_comparison.png')
 
 def plot_det_curve(results_df):
+    # Load all four test-condition feature sets
+    def _load_features(feat_dir):
+        dfs = [pd.read_csv(f) for f in sorted(feat_dir.glob("*_features.csv"))]
+        return pd.concat(dfs, ignore_index=True)
 
-    fatigue_dir = ST_FATIGUE_FEATURES
-    dfs         = [pd.read_csv(f) for f in sorted(fatigue_dir.glob("*_features.csv"))]
-    all_fatigue = pd.concat(dfs, ignore_index=True)
+    all_st_fatigue  = _load_features(ST_FATIGUE_FEATURES)
+    all_dt_control  = _load_features(DT_CONTROL_FEATURES)
+    all_dt_fatigue  = _load_features(DT_FATIGUE_FEATURES)
+
+    # Condition config: (label, colour, alpha, data_df or None for holdout)
+    conditions = [
+        ('Baseline (ST-Control)',            COLOR_BASELINE,   None),
+        ('Cross-Session (ST-Fatigue)',        COLOR_CROSS,      all_st_fatigue),
+        ('DT-Control (+ cognitive)',          COLOR_DT_CONTROL, all_dt_control),
+        ('DT-Fatigue (+ fatigue + cognitive)', COLOR_DT_FATIGUE, all_dt_fatigue),
+    ]
 
     fig, ax = plt.subplots(figsize=(8, 8))
 
-    eer_baseline_list = []
-    eer_cross_list    = []
+    eer_means = []
 
-    for _, row in results_df.iterrows():
-        pid    = row['participant_id']
-        svm    = joblib.load(MODELS_DIR / f"{pid}_svm.pkl")
-        scaler = joblib.load(MODELS_DIR / f"{pid}_scaler.pkl")
+    for label, colour, feat_df in conditions:
+        eer_list = []
 
+        for _, row in results_df.iterrows():
+            pid    = row['participant_id']
+            svm    = joblib.load(MODELS_DIR / f"{pid}_svm.pkl")
+            scaler = joblib.load(MODELS_DIR / f"{pid}_scaler.pkl")
 
-        holdout  = np.load(MODELS_DIR / f"{pid}_holdout.npz")
-        X_h, y_h = holdout['X'], holdout['y']
-        scores_h = svm.decision_function(X_h)
+            if feat_df is None:
+                # Baseline: use the held-out training split
+                holdout  = np.load(MODELS_DIR / f"{pid}_holdout.npz")
+                X, y     = holdout['X'], holdout['y']
+                scores   = svm.decision_function(X)
+            else:
+                X_raw  = feat_df[FEATURE_COLS].values
+                y      = (feat_df['participant_id'] == pid).astype(int).values
+                X      = scaler.transform(X_raw)
+                scores = svm.decision_function(X)
 
-        fpr_b, tpr_b, _ = roc_curve(y_h, scores_h, pos_label=1)
-        fnr_b = 1 - tpr_b   # FRR = 1 - TPR
+            fpr, tpr, _ = roc_curve(y, scores, pos_label=1)
+            fnr = 1 - tpr
 
-        ax.plot(fpr_b, fnr_b, color='#2196F3', alpha=0.25, linewidth=0.9)
+            ax.plot(fpr, fnr, color=colour, alpha=0.20, linewidth=0.9)
 
-        eer_b, _ = compute_eer(y_h, scores_h)
-        eer_baseline_list.append(eer_b)
+            eer, _ = compute_eer(y, scores)
+            eer_list.append(eer)
 
+        mean_eer = np.mean(eer_list)
+        eer_means.append((label, colour, mean_eer))
 
-        X_f      = all_fatigue[FEATURE_COLS].values
-        y_f      = (all_fatigue['participant_id'] == pid).astype(int).values
-        X_f_sc   = scaler.transform(X_f)
-        scores_f = svm.decision_function(X_f_sc)
+    # EER diagonal
+    ax.plot([0, 1], [0, 1], 'k--', linewidth=1.0, alpha=0.5)
 
-        fpr_f, tpr_f, _ = roc_curve(y_f, scores_f, pos_label=1)
-        fnr_f = 1 - tpr_f
+    # Mean EER scatter points
+    for label, colour, mean_eer in eer_means:
+        ax.scatter(mean_eer, mean_eer, color=colour, s=130, zorder=5,
+                   label=f'Mean EER — {label}: {mean_eer:.1%}')
 
-        ax.plot(fpr_f, fnr_f, color='#F44336', alpha=0.25, linewidth=0.9)
-
-        eer_f, _ = compute_eer(y_f, scores_f)
-        eer_cross_list.append(eer_f)
-
-
-    ax.plot([0, 1], [0, 1], 'k--', linewidth=1.0, alpha=0.5, label='EER line (FAR = FRR)')
-
-
-    mean_eer_b = np.mean(eer_baseline_list)
-    mean_eer_c = np.mean(eer_cross_list)
-    ax.scatter(mean_eer_b, mean_eer_b, color='#2196F3', s=120, zorder=5,
-               label=f'Mean Baseline EER: {mean_eer_b:.1%}')
-    ax.scatter(mean_eer_c, mean_eer_c, color='#F44336', s=120, zorder=5,
-               label=f'Mean Cross-Session EER: {mean_eer_c:.1%}')
-
-    
-    proxy = [
-        Line2D([0],[0], color='#2196F3', lw=2, label='Baseline (S1→S1) — per participant'),
-        Line2D([0],[0], color='#F44336', lw=2, label='Cross-Session (S1→S2) — per participant'),
-        Line2D([0],[0], color='k',       lw=1, linestyle='--', label='EER diagonal'),
+    # Legend proxies for the per-participant curves
+    proxy_lines = [
+        Line2D([0], [0], color=colour, lw=2, alpha=0.7, label=f'{label} — per participant')
+        for label, colour, _ in conditions
     ]
+    proxy_lines.append(
+        Line2D([0], [0], color='k', lw=1, linestyle='--', label='EER diagonal')
+    )
 
     ax.set_xlabel('False Acceptance Rate (FAR)', fontsize=12)
     ax.set_ylabel('False Rejection Rate (FRR)', fontsize=12)
     ax.set_title(
-        'DET Curve — Detection Error Tradeoff\n'
-        'Each line = one participant  |  Closer to origin = better system',
+        'DET Curve — Detection Error Tradeoff (All 4 Conditions)\n'
+        'Each line = one participant  |  Closer to origin = better',
         fontsize=13, fontweight='bold'
     )
     ax.set_xlim(0, 1); ax.set_ylim(0, 1)
     ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{x:.0%}'))
     ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f'{y:.0%}'))
-    ax.legend(handles=proxy + ax.get_legend_handles_labels()[0][-2:],
-              fontsize=9, loc='upper right')
+
+    # Combine per-participant line proxies with mean-EER scatter handles
+    scatter_handles = ax.get_legend_handles_labels()[0]
+    ax.legend(handles=proxy_lines + scatter_handles,
+              fontsize=8, loc='upper right', ncol=1)
     ax.grid(alpha=0.3, linestyle='--')
     ax.set_aspect('equal')
     fig.tight_layout()
@@ -523,7 +569,7 @@ def main():
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
  
 
-    results_path = RESULTS_DIR / "evaluation_results.csv"
+    results_path = RESULTS_DIR / "right_wrist_evaluation_results.csv"
     if not results_path.exists():
         raise FileNotFoundError(
             f"Results file not found: {results_path}. "
