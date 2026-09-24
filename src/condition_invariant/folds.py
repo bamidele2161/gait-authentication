@@ -35,7 +35,7 @@ class DevelopmentFoldData:
 
 def create_outer_folds(
     participants: tuple[str, ...],
-    number_of_folds: int = 4,
+    number_of_folds: int = 2,
 ) -> tuple[OuterFold, ...]:
     """Create deterministic folds where every participant is unseen once."""
 

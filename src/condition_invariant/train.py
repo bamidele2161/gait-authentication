@@ -109,7 +109,7 @@ def _run_batches(
             metric_loss = session1_batch_hard_loss(
                 embeddings, labels, conditions, config.margin, config.soft_margin
             )
-            identity_loss = F.cross_entropy(classifier(embeddings), labels)
+            identity_loss = F.cross_entropy( (embeddings), labels)
             total = metric_loss + config.identity_loss_weight * identity_loss
             if training:
                 total.backward()

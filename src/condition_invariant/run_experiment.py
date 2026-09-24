@@ -65,7 +65,7 @@ class ExperimentConfig:
     """Settings shared by all four outer folds."""
 
     training: TrainingConfig = TrainingConfig()
-    number_of_folds: int = 4
+    number_of_folds: int = 2
     development_learning_fraction: float = 0.80
     target_far: float = 0.01
     scoring_batch_size: int = 64
@@ -298,11 +298,11 @@ def run_experiment(
 
     Cross-session authentication flow per fold
     ------------------------------------------
-    1. Train encoder on development participants (all 4 conditions).
-    2. Calibrate one global threshold from development-validation scores
-       spanning all 4 conditions (not ST-control only).
+    1. Train encoder on development participants' ST-control/ST-fatigue data.
+    2. Calibrate one global threshold from held-out development
+       ST-control/ST-fatigue scores.
     3. Enrol each evaluation participant from their ST-control only.
-    4. Score each evaluation participant's probes from all 4 conditions
+    4. Score each evaluation participant's DT-control/DT-fatigue probes
        using Euclidean distance to their enrollment template.
     5. Apply the global threshold → accept / reject.
     """
@@ -491,7 +491,7 @@ def main() -> None:
     parser.add_argument("--identity-loss-weight", type=float, default=0.3)
     parser.add_argument("--device",            default="cpu")
     parser.add_argument("--target-far",        type=float, default=0.01)
-    parser.add_argument("--fold",              type=int,   choices=(1, 2, 3, 4))
+    parser.add_argument("--fold",              type=int,   choices=(1, 2))
     parser.add_argument("--margin", type=float, default=0.2)
     parser.add_argument(
         "--soft-margin", action="store_true",
