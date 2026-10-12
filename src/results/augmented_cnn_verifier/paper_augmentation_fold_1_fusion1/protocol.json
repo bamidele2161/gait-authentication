@@ -1,0 +1,56 @@
+{
+  "fold": 1,
+  "development_participants": [
+    "sub_02",
+    "sub_03",
+    "sub_05",
+    "sub_07",
+    "sub_08",
+    "sub_09",
+    "sub_11",
+    "sub_12",
+    "sub_13",
+    "sub_15",
+    "sub_17",
+    "sub_18"
+  ],
+  "evaluation_participants": [
+    "sub_01",
+    "sub_06",
+    "sub_10",
+    "sub_14"
+  ],
+  "best_development_epochs": [
+    14,
+    3,
+    22,
+    3,
+    10,
+    18,
+    23,
+    15,
+    40,
+    38,
+    17,
+    17
+  ],
+  "enrollment_epochs": 17,
+  "threshold": {
+    "threshold": 0.046119749546051025,
+    "target_far": 0.01,
+    "validation_frr": 0.2921415716856629,
+    "validation_far": 0.00992528766973878,
+    "genuine_count": 1667,
+    "impostor_count": 18337
+  },
+  "augmentation": {
+    "methods": [
+      "noise",
+      "temporal_shift",
+      "amplitude_stretch",
+      "time_stretch"
+    ],
+    "maximum_distortion": 0.15,
+    "training_only": true
+  }
+}
