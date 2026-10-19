@@ -44,6 +44,9 @@ EVALUATION_CONDITIONS = ("dt_control", "dt_fatigue")
 ENROLMENT_FRACTION = 0.8
 NORMALIZATION_SPLITS = 3
 SENSOR_FAULT_RATIO = 0.25
+# Later conditions whose change from ST-control defines the learned drift.
+DRIFT_CONDITIONS = ("st_fatigue", "dt_control", "dt_fatigue")
+_DRIFT_BANKS: dict = {}
 _REPORTED_FAULTS: set[str] = set()
 OFFSET = 1000.0  # turns "higher score = genuine" into a non-negative distance
 
@@ -68,6 +71,10 @@ class ExperimentConfig:
     mirror_group_size: int = 4
     seed: int = 42
     exclude: tuple[str, ...] = ()
+    # Probe conditions for unseen users and (with session2 calibration) the mirror.
+    probe_conditions: tuple[str, ...] = EVALUATION_CONDITIONS
+    # Development-user conditions that supply background negatives and cohorts.
+    background_conditions: tuple[str, ...] = TRAINING_CONDITIONS
 
 
 def participants() -> tuple[str, ...]:
@@ -82,13 +89,52 @@ def fuse(scores: np.ndarray, n: int) -> np.ndarray:
     return (cumulative[n:] - cumulative[:-n]) / n
 
 
-def _background(people, data, rng, per_user):
+def _background(people, data, rng, per_user, conditions=TRAINING_CONDITIONS):
     return np.vstack([
         data[p, c].strides[np.sort(rng.choice(
             len(data[p, c].strides), min(per_user, len(data[p, c].strides)), replace=False,
         ))]
-        for p in people for c in TRAINING_CONDITIONS
+        for p in people for c in conditions
     ])
+
+
+def drift_bank(people, data, config):
+    """Drift vectors learned from ``people`` only (never the enrolled user).
+
+    For each person and each condition in DRIFT_CONDITIONS, the vector is the
+    mean stride profile in that condition minus the person's ST-control mean,
+    shape (128, channels).  A sensor whose gyroscope level is below
+    SENSOR_FAULT_RATIO of the group's typical level in either recording is
+    zeroed, so a dead sensor coming back to life is not mistaken for drift.
+    """
+
+    if config.verifier.drift_augmentation < 1:
+        return None
+    key = tuple(sorted(people))
+    if key in _DRIFT_BANKS:
+        return _DRIFT_BANKS[key]
+    names = list(LOCATIONS)
+    gyro = slice(1, 2 * len(names), 2)
+
+    def level(strides):
+        return np.median(strides[:, :, gyro].reshape(-1, len(names)), axis=0)
+
+    reference = np.median([level(data[p, "st_control"].strides) for p in people], axis=0)
+    vectors = []
+    for p in people:
+        base = data[p, "st_control"].strides
+        for condition in DRIFT_CONDITIONS:
+            later = data[p, condition].strides
+            vector = later.mean(axis=0) - base.mean(axis=0)
+            faulty = (level(base) < SENSOR_FAULT_RATIO * reference) | (
+                level(later) < SENSOR_FAULT_RATIO * reference
+            )
+            for l in np.flatnonzero(faulty):
+                vector[:, [2 * l, 2 * l + 1]] = 0.0
+                vector[:, 2 * len(names) + 6 * l: 2 * len(names) + 6 * l + 6] = 0.0
+            vectors.append(vector)
+    _DRIFT_BANKS[key] = np.stack(vectors).astype(np.float32)
+    return _DRIFT_BANKS[key]
 
 
 def _user_scorer(enrolment, background_people, data, rng, config, seed, normalize):
@@ -105,23 +151,25 @@ def _user_scorer(enrolment, background_people, data, rng, config, seed, normaliz
     per_user = config.verifier.background_strides_per_user
     if not normalize:
         model = UserModel(config.verifier).fit(
-            enrolment, _background(background_people, data, rng, per_user), seed
+            enrolment, _background(background_people, data, rng, per_user, config.background_conditions), seed,
+            drift_bank(background_people, data, config),
         )
         return model.score
     scorers = []
     for k in range(NORMALIZATION_SPLITS):
         cohort = background_people[k::NORMALIZATION_SPLITS]
         training = [p for p in background_people if p not in cohort]
-        background = _background(training, data, rng, per_user)
-        model = UserModel(config.verifier).fit(enrolment, background, seed + k)
-        cohort_scores = model.score(_background(cohort, data, rng, per_user))
+        background = _background(training, data, rng, per_user, config.background_conditions)
+        bank = drift_bank(training, data, config)
+        model = UserModel(config.verifier).fit(enrolment, background, seed + k, bank)
+        cohort_scores = model.score(_background(cohort, data, rng, per_user, config.background_conditions))
         if config.score_normalization == "fnorm":
             # Genuine level from 2-fold chronological cross-validation on the
             # user's own enrolment: each half is scored by a model trained on
             # the other half.  F-norm maps impostor mean -> 0, genuine mean -> 1.
             half = len(enrolment) // 2
             held_out = np.concatenate([
-                UserModel(config.verifier).fit(train, background, seed + k).score(test)
+                UserModel(config.verifier).fit(train, background, seed + k, bank).score(test)
                 for train, test in (
                     (enrolment[:half], enrolment[half:]), (enrolment[half:], enrolment[:half])
                 )
@@ -147,7 +195,8 @@ def _cohort_scores(probes, background_people, data, rng, config, seed):
         others = [p for p in background_people if p != person]
         model = UserModel(config.verifier).fit(
             data[person, "st_control"].strides,
-            _background(others, data, rng, per_user), seed + 1000 + i,
+            _background(others, data, rng, per_user, config.background_conditions), seed + 1000 + i,
+            drift_bank(others, data, config),
         )
         for key, strides in probes.items():
             columns[key].append(fuse(model.score(strides), config.fusion_strides))
@@ -166,7 +215,7 @@ def working_locations(enrolment, background_people, data, config):
     names = list(LOCATIONS)
     reference = np.median(np.concatenate([
         data[p, c].strides[:, :, 1:2 * len(names):2].reshape(-1, len(names))
-        for p in background_people for c in TRAINING_CONDITIONS
+        for p in background_people for c in config.background_conditions
     ]), axis=0)
     level = np.median(enrolment[:, :, 1:2 * len(names):2].reshape(-1, len(names)), axis=0)
     kept = tuple(
@@ -284,7 +333,7 @@ def calibrate(development, data, config, rng):
                 # Same situation as the evaluation users: full ST-control
                 # enrolment, session-2 DT probes, one week later.
                 enrolment[p] = strides
-                for condition in EVALUATION_CONDITIONS:
+                for condition in config.probe_conditions:
                     probes[p, condition] = data[p, condition].strides
                 continue
             cut = int(len(strides) * ENROLMENT_FRACTION)
@@ -325,13 +374,13 @@ def run(config: ExperimentConfig, results_dir: Path) -> pd.DataFrame:
         threshold, cal_frr, cal_far = calibrate(development, data, config, rng)
         users = [p for p in fold.evaluation_participants if p not in config.exclude]
         enrolment = {p: data[p, "st_control"].strides for p in users}
-        probes = {(p, c): data[p, c].strides for p in users for c in EVALUATION_CONDITIONS}
+        probes = {(p, c): data[p, c].strides for p in users for c in config.probe_conditions}
         streams = score_streams(
             users, enrolment, probes, development, data, rng, config,
             config.seed + 50 + fold.fold_index,
         )
         for claimed in users:
-            for condition in EVALUATION_CONDITIONS:
+            for condition in config.probe_conditions:
                 genuine = OFFSET - streams[claimed, claimed, condition]
                 impostor = np.concatenate([
                     OFFSET - streams[claimed, other, condition]
@@ -388,6 +437,8 @@ def main() -> None:
                         help="per-sensor input: 2 magnitudes, 6 raw axes, or all 8")
     parser.add_argument("--pooling", choices=("slice", "mean"), default="slice")
     parser.add_argument("--derivative", action="store_true")
+    parser.add_argument("--drift-augmentation", type=int, default=0,
+                        help="copies per enrolment stride shifted by drift learned from development users")
     parser.add_argument("--enrolment-augmentation", type=int, default=0,
                         help="augmented copies per enrolment stride")
     parser.add_argument("--score-normalization", choices=("none", "znorm", "tnorm", "snorm", "fnorm"), default="none")
@@ -400,6 +451,10 @@ def main() -> None:
     parser.add_argument("--target-far", type=float, default=0.01)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--exclude", nargs="*", default=[])
+    parser.add_argument("--probe-conditions", nargs="+", choices=CONDITIONS[1:],
+                        default=list(EVALUATION_CONDITIONS))
+    parser.add_argument("--background-conditions", nargs="+", choices=TRAINING_CONDITIONS,
+                        default=list(TRAINING_CONDITIONS))
     args = parser.parse_args()
     config = ExperimentConfig(
         verifier=VerifierConfig(
@@ -407,6 +462,7 @@ def main() -> None:
             combination=args.sensor_combination,
             regularization=args.regularization,
             enrolment_augmentation=args.enrolment_augmentation,
+            drift_augmentation=args.drift_augmentation,
             pooling=args.pooling, derivative=args.derivative, channels=args.channels,
             amplitude_range=args.amplitude_range, warp_range=args.warp_range,
             background_strides_per_user=args.background_strides,
@@ -417,6 +473,8 @@ def main() -> None:
         operating_point=args.operating_point,
         mirror_group_size=args.mirror_group_size,
         seed=args.seed, exclude=tuple(args.exclude),
+        probe_conditions=tuple(args.probe_conditions),
+        background_conditions=tuple(args.background_conditions),
     )
     name = (
         f"{'+'.join(args.locations)}_{args.fusion}"
@@ -428,6 +486,12 @@ def main() -> None:
         f"_cal{args.calibration_probes}_{args.operating_point}_g{args.mirror_group_size}"
         f"_fuse{args.fusion_strides}"
     )
+    if args.drift_augmentation:
+        name += f"_drift{args.drift_augmentation}"
+    if tuple(args.probe_conditions) != EVALUATION_CONDITIONS:
+        name += "_probes-" + "-".join(args.probe_conditions)
+    if tuple(args.background_conditions) != TRAINING_CONDITIONS:
+        name += "_bgcond-" + "-".join(args.background_conditions)
     if args.exclude:
         name += "_without_" + "_".join(args.exclude)
     if args.seed != 42:

@@ -4,9 +4,12 @@ import pytest
 
 from src.robust_gait.data import LOCATIONS, WINDOWS_ROOT, _continuous, _raw, load_strides
 from src.robust_gait.run_experiment import (
-    ExperimentConfig, calibrate, fuse, participants, working_locations,
+    DRIFT_CONDITIONS, ExperimentConfig, calibrate, drift_bank, fuse, participants,
+    working_locations,
 )
-from src.robust_gait.verifier import VerifierConfig, augment_strides, stride_features
+from src.robust_gait.verifier import (
+    UserModel, VerifierConfig, augment_strides, drift_strides, stride_features,
+)
 
 N_CHANNELS = 2 * len(LOCATIONS)
 
@@ -87,3 +90,42 @@ def test_calibration_never_touches_evaluation_users():
     )
     threshold, frr, far = calibrate(development, data, config, np.random.default_rng(0))
     assert np.isfinite(threshold) and 0 <= frr <= 1 and 0 <= far <= 1
+
+
+def test_drift_copies_add_scaled_bank_vectors():
+    rng = np.random.default_rng(2)
+    strides = rng.normal(size=(10, 128, 4)).astype(np.float32)
+    bank = np.ones((3, 128, 4), dtype=np.float32)
+    config = VerifierConfig(drift_augmentation=2, drift_scale=(0.5, 1.0))
+    copies = drift_strides(strides, bank, 2, config, rng)
+    assert copies.shape == (20, 128, 4)
+    shift = copies - np.concatenate([strides, strides])
+    assert np.all((shift >= 0.5 - 1e-6) & (shift <= 1.0 + 1e-6))
+    assert drift_strides(strides, None, 2, config, rng).shape[0] == 0
+
+
+def test_drift_off_leaves_enrolment_randomness_unchanged():
+    rng = np.random.default_rng(3)
+    strides = rng.normal(1.0, 0.2, (30, 128, N_CHANNELS + 6 * len(LOCATIONS))).astype(np.float32)
+    background = rng.normal(0.0, 1.0, strides.shape).astype(np.float32)
+    config = VerifierConfig(locations=("sacrum",), enrolment_augmentation=1)
+    with_bank = UserModel(config).fit(strides, background, 5, np.ones_like(strides[:2]))
+    without = UserModel(config).fit(strides, background, 5)
+    np.testing.assert_allclose(with_bank.score(strides), without.score(strides))
+
+
+def test_drift_bank_uses_only_given_people_and_zeroes_dead_sensors():
+    people = participants()
+    data = {(p, c): load_strides(p, c) for p in people for c in
+            ("st_control", "st_fatigue", "dt_control", "dt_fatigue")}
+    config = ExperimentConfig(VerifierConfig(drift_augmentation=4))
+    group = ["sub_07", "sub_01", "sub_02", "sub_03"]
+    bank = drift_bank(group, data, config)
+    assert bank.shape == (len(group) * len(DRIFT_CONDITIONS), 128, N_CHANNELS + 6 * len(LOCATIONS))
+    names = list(LOCATIONS)
+    sub07 = bank[: len(DRIFT_CONDITIONS)]  # sub_07's vectors come first
+    for location in ("sacrum", "left_foot"):
+        l = names.index(location)
+        assert np.all(sub07[:, :, [2 * l, 2 * l + 1]] == 0)
+        assert np.all(sub07[:, :, N_CHANNELS + 6 * l: N_CHANNELS + 6 * l + 6] == 0)
+    assert drift_bank(group, data, ExperimentConfig()) is None

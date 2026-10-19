@@ -44,6 +44,8 @@ class VerifierConfig:
     combination: str = "mean"          # late fusion: mean | median across sensors
     channels: str = "magnitude"        # magnitude | axes | both
     derivative: bool = False           # append first differences of each profile
+    drift_augmentation: int = 0        # extra copies shifted by learned drift vectors
+    drift_scale: tuple[float, float] = (0.5, 1.0)  # drift vector scaled by U(lo, hi)
 
 
 def augment_strides(
@@ -95,6 +97,29 @@ def augment_strides(
     return np.concatenate([strides, *out]).astype(np.float32)
 
 
+def drift_strides(
+    strides: np.ndarray, bank: np.ndarray, copies: int, config: VerifierConfig,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """Copies of the enrolment strides shifted by measured condition drift.
+
+    ``bank`` holds (k, samples, channels) drift vectors: how other people's
+    mean stride changed from ST-control to a later condition.  Each copy adds
+    one randomly chosen vector, scaled by U(drift_scale), to every stride.
+    Returns only the new copies.
+    """
+
+    if copies < 1 or bank is None or not len(bank):
+        return strides[:0]
+    lo, hi = config.drift_scale
+    out = []
+    for _ in range(copies):
+        pick = rng.integers(len(bank), size=len(strides))
+        scale = rng.uniform(lo, hi, (len(strides), 1, 1))
+        out.append(strides + scale * bank[pick])
+    return np.concatenate(out).astype(np.float32)
+
+
 def channel_columns(locations, channels: str = "magnitude") -> list[int]:
     """Column indices of the requested representation for these locations."""
 
@@ -139,15 +164,20 @@ class UserModel:
     models: list = field(default_factory=list)
     groups: list = field(default_factory=list)
 
-    def fit(self, enrollment: np.ndarray, background: np.ndarray, seed: int = 0):
+    def fit(self, enrollment: np.ndarray, background: np.ndarray, seed: int = 0,
+            drift_bank: np.ndarray | None = None):
         groups = (
             [self.config.locations] if self.config.fusion == "early"
             else [(location,) for location in self.config.locations]
         )
-        enrollment = augment_strides(
-            enrollment, self.config.enrolment_augmentation, self.config,
-            np.random.default_rng(seed),
+        rng = np.random.default_rng(seed)
+        drifted = drift_strides(
+            enrollment, drift_bank, self.config.drift_augmentation, self.config, rng,
         )
+        enrollment = np.concatenate((
+            augment_strides(enrollment, self.config.enrolment_augmentation, self.config, rng),
+            drifted,
+        ))
         labels = np.r_[np.ones(len(enrollment)), np.zeros(len(background))]
         for group in groups:
             x = np.vstack((

@@ -66,6 +66,9 @@ calibration or model selection. Every configuration choice was made with
 | `--score-normalization` | none | `znorm`, `tnorm`, `snorm`, `fnorm` |
 | `--fusion` / `--sensor-combination` | early / mean | late fusion, mean or median across sensors |
 | `--channels` | magnitude | `axes`: raw GyrX/Y/Z + AccX/Y/Z per sensor; `both`: magnitudes + axes |
+| `--probe-conditions` | dt_control dt_fatigue | conditions probed for unseen users and (with `session2`) in the mirror; add `st_fatigue` for the three-condition protocol |
+| `--background-conditions` | st_control st_fatigue | development-user recordings that supply negatives, Z/T-norm cohorts and the sensor-fault reference |
+| `--drift-augmentation` | 0 | extra enrolment copies shifted by learned drift (see below) |
 
 ## Results (4 folds, 16 users, mean of seeds 42/142/242; FRR / FAR / EER %)
 
@@ -73,6 +76,39 @@ calibration or model selection. Every configuration choice was made with
 | --- | --- | --- |
 | magnitude | 6.2 / 14.0 / 2.4 | 14.0 / 10.4 / 4.8 |
 | axes | 0.7 / 8.3 / 0.3 | 9.4 / 6.9 / 0.3 |
+
+### Three-condition protocol (probes ST-fatigue, DT-control, DT-fatigue; FRR / FAR %)
+
+Same final configuration with `--probe-conditions st_fatigue dt_control dt_fatigue`, mean of seeds 42/142/242:
+
+| variant | ST-fatigue | DT-control | DT-fatigue |
+| --- | --- | --- | --- |
+| standard (negatives: dev ST-control + ST-fatigue) | 0.0 / 9.5 | 0.7 / 8.2 | 9.4 / 6.9 |
+| `--background-conditions st_control` | 0.0 / 7.2 | 5.2 / 5.6 | 13.2 / 4.7 |
+| `--drift-augmentation 4`, hand augmentation off | 0.0 / 7.9 | 1.0 / 8.8 | 7.3 / 5.4 |
+| `--drift-augmentation 4` + hand augmentation | 0.0 / 5.6 | 0.3 / 5.9 | 3.7 / 2.6 |
+
+The 9-sensor raw-axis SVM problem-definition baseline (11 s decisions) gives
+0.0 / 19.2, 6.3 / 47.1 and 5.2 / 51.0 on the same three conditions.
+
+### Learned drift augmentation
+
+`run_experiment.drift_bank` learns, from the development users only, how each
+person's mean stride changed from ST-control to ST-fatigue, DT-control and
+DT-fatigue (12 people x 3 = 36 vectors per fold; a sensor dead in either
+recording is zeroed). In the calibration mirror each pseudo-unseen user's bank
+comes from the other development users only. `verifier.drift_strides` adds one
+random vector, scaled by U(0.5, 1), to each enrolment stride copy.
+
+The vectors do not predict an individual's change (about 0 % of the mean shift
+explained, cosine about 0.15), but they span where change happens: about 40 % of
+a test user's real drift lies in the 36 learned directions versus 2 % for
+random directions. They act as within-class nuisance directions the per-user
+models learn to tolerate.
+
+Caveat: this uses development users' session-2 and fatigue recordings for
+training, and it learns from the same kinds of change that are tested.
+Evaluation users' later recordings are never used.
 
 Raw axes keep the direction of each segment's motion, which magnitudes discard.
 Gravity direction alone (sensor mounting, no motion) gives only ~20-23% EER,
