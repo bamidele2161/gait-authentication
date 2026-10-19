@@ -569,7 +569,7 @@ def main():
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
  
 
-    results_path = RESULTS_DIR / "right_wrist_evaluation_results.csv"
+    results_path = RESULTS_DIR / "evaluation_results.csv"
     if not results_path.exists():
         raise FileNotFoundError(
             f"Results file not found: {results_path}. "

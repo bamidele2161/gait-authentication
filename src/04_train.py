@@ -15,8 +15,8 @@ from sklearn.svm import SVC
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.utils import (  # noqa: E402
-    CV_FOLDS, EXCLUDED_PARTICIPANTS, FEATURE_COLS, FEATURES_DIR, MODELS_DIR,
-    PARAM_GRID, TARGET_FAR,
+    BLOCK_SAMPLES, CV_FOLDS, EXCLUDED_PARTICIPANTS, FEATURE_COLS, FEATURES_DIR,
+    MODELS_DIR, PARAM_GRID, TARGET_FAR, WINDOW_SAMPLES,
 )
 
 
@@ -49,8 +49,17 @@ def chronological_split(data):
     return {name: pd.concat(frames, ignore_index=True) for name, frames in partitions.items()}
 
 
-def balanced_binary_partition(data, target, seed):
+def purge_cross_block_windows(data):
+    """Remove windows that extend across a 20-second block boundary."""
+    within_block_start = data["start_sample"].to_numpy() % BLOCK_SAMPLES
+    keep = within_block_start + WINDOW_SAMPLES <= BLOCK_SAMPLES
+    return data.loc[keep].copy()
+
+
+def balanced_binary_partition(data, target, seed, purge_block_boundaries=False):
     """Give every impostor equal representation without changing chronology."""
+    if purge_block_boundaries:
+        data = purge_cross_block_windows(data)
     positive = data[data["participant_id"] == target]
     if positive.empty:
         raise ValueError(f"No positive samples for {target}")
@@ -97,7 +106,8 @@ def train_all_participants(data):
 
     for participant_index, participant in enumerate(participants):
         X_train, y_train, groups = balanced_binary_partition(
-            splits["train"], participant, seed=1000 + participant_index
+            splits["train"], participant, seed=1000 + participant_index,
+            purge_block_boundaries=True,
         )
         X_validation, y_validation, _ = balanced_binary_partition(
             splits["validation"], participant, seed=2000 + participant_index

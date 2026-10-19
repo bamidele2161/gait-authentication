@@ -1,9 +1,9 @@
 import pandas as pd
 from pathlib import Path
 
-def organize_duogait_data(parent_folder_path, output_path="data/right_wrist"):
+def organize_duogait_data(parent_folder_path, output_path=None):
     parent = Path(parent_folder_path)
-    output = Path(output_path)
+    output = Path(output_path) if output_path else Path(__file__).resolve().parent / "data"
     
     conditions = ['st_control', 'st_fatigue', 'dt_control', 'dt_fatigue']
     
@@ -22,8 +22,8 @@ def organize_duogait_data(parent_folder_path, output_path="data/right_wrist"):
             if participant_folder.is_dir() and participant_folder.name.startswith("sub_"):
                 participant_id = participant_folder.name.split('_')[1]
 
-                source_file = participant_folder / "RW.csv"
-                target_filename = f"sub{participant_id}_RW.csv"
+                source_file = participant_folder / "SA.csv"
+                target_filename = f"sub{participant_id}_SA.csv"
                 target_path = target_dir / target_filename
 
                 if source_file.exists():
@@ -51,9 +51,7 @@ def organize_duogait_data(parent_folder_path, output_path="data/right_wrist"):
 def main():
     # parent_folder = r"C:\Users\bakinyem\Documents\gait-authentication\raw_data"
     parent_folder = Path(__file__).resolve().parent.parent / "raw_data"
-    output_folder = "data/right_wrist"
-
-    organize_duogait_data(parent_folder, output_folder)
+    organize_duogait_data(parent_folder)
 
 
     # file_path = Path(r"C:\Users\bakinyem\Documents\gait\src\data\st_control\sub01_SA.csv")

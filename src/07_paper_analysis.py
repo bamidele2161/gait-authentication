@@ -12,15 +12,16 @@ import pandas as pd
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.utils import (  # noqa: E402
     DT_CONTROL_FEATURES, DT_FATIGUE_FEATURES, EXCLUDED_PARTICIPANTS,
-    FEATURE_COLS, FEATURES_DIR, MODELS_DIR, ST_FATIGUE_FEATURES,
+    FEATURE_COLS, FEATURES_DIR, MODELS_DIR, RESULTS_DIR, SENSOR_SET,
+    ST_FATIGUE_FEATURES,
 )
 
 
 ROOT = Path(__file__).resolve().parent.parent
-PAPER_DIR = ROOT / "paper"
+PAPER_DIR = ROOT / "paper" if SENSOR_SET == "sacrum" else ROOT / "paper" / SENSOR_SET
 FIGURE_DIR = PAPER_DIR / "figures"
 SUPPLEMENT_DIR = PAPER_DIR / "supplement"
-RESULTS_PATH = ROOT / "src" / "results" / "sacrum_time" / "evaluation_results.csv"
+RESULTS_PATH = RESULTS_DIR / "evaluation_results.csv"
 
 CONDITIONS = {
     "ST-control": FEATURES_DIR,
