@@ -583,7 +583,9 @@ def main() -> None:
         f"_{args.pooling}{'_deriv' if args.derivative else ''}"
         f"_aug{args.enrolment_augmentation}a{args.amplitude_range:g}w{args.warp_range:g}"
         f"_bg{args.background_strides}_{args.score_normalization}"
-        f"_cal{args.calibration_probes}_{args.operating_point}_g{args.mirror_group_size}"
+        f"_cal{args.calibration_probes}_{args.operating_point}"
+        f"{f'{args.target_far:g}' if args.operating_point == 'target-far' else ''}"
+        f"_g{args.mirror_group_size}"
         f"_fuse{args.fusion_strides}"
     )
     if args.drift_augmentation:
