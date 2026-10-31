@@ -1,0 +1,46 @@
+# Only the code needed to run the experiments is tracked.
+# Everything else (data, caches, models, results, papers, PDFs, slides,
+# figures, logs, archives, virtual environments) is ignored by default.
+# To track a new file, add a "!" exception below.
+
+# 1. Ignore everything at the top level ...
+/*
+
+# ... except these.
+!/.gitignore
+!/README.md
+!/requirements.txt
+!/src/
+!/tests/
+!/docs/
+
+# 2. src/: experiment code only (no data/, models/, results/, figures).
+/src/*
+!/src/*.py
+!/src/robust_gait/
+!/src/multisensor_problem_definition/
+/src/robust_gait/*
+!/src/robust_gait/*.py
+!/src/robust_gait/README.md
+/src/multisensor_problem_definition/*
+!/src/multisensor_problem_definition/*.py
+!/src/multisensor_problem_definition/README.md
+
+# 3. tests/: test code only.
+/tests/**/*
+!/tests/**/
+!/tests/**/*.py
+
+# 4. docs/: only the analysis/experiment scripts (no PDFs, LaTeX, figures).
+/docs/*
+!/docs/build/
+/docs/build/*
+!/docs/build/paper/
+/docs/build/paper/*
+!/docs/build/paper/*.py
+
+# 5. Never track these anywhere.
+__pycache__/
+*.py[cod]
+.DS_Store
+.ipynb_checkpoints/
