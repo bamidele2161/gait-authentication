@@ -4,7 +4,7 @@ import pytest
 
 from src.robust_gait.data import LOCATIONS, WINDOWS_ROOT, _continuous, _raw, load_strides
 from src.robust_gait.run_experiment import (
-    DRIFT_CONDITIONS, ExperimentConfig, calibrate, drift_bank, fuse, participants,
+    DRIFT_CONDITIONS, ExperimentConfig, calibrate, drift_bank, drift_cvae, fuse, participants,
     working_locations,
 )
 from src.robust_gait.verifier import (
@@ -129,3 +129,23 @@ def test_drift_bank_uses_only_given_people_and_zeroes_dead_sensors():
         assert np.all(sub07[:, :, [2 * l, 2 * l + 1]] == 0)
         assert np.all(sub07[:, :, N_CHANNELS + 6 * l: N_CHANNELS + 6 * l + 6] == 0)
     assert drift_bank(group, data, ExperimentConfig()) is None
+
+
+def test_drift_cvae_uses_only_given_people():
+    people = participants()
+    group, others = list(people[:6]), set(people[6:])
+
+    class Guard(dict):
+        def __getitem__(self, key):
+            if key[0] in others:
+                raise AssertionError(f"drift CVAE accessed {key}")
+            return super().__getitem__(key)
+
+    data = Guard({
+        (p, c): load_strides(p, c) for p in group
+        for c in ("st_control", "st_fatigue", "dt_control", "dt_fatigue")
+    })
+    config = ExperimentConfig(VerifierConfig(drift_augmentation=4), drift_model="cvae")
+    vectors = drift_cvae(group, data, config)
+    assert vectors.shape[1:] == (128, N_CHANNELS + 6 * len(LOCATIONS))
+    assert np.isfinite(vectors).all()
