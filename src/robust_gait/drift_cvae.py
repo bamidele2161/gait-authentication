@@ -41,12 +41,18 @@ BETA = 1.0              # KL weight
 SAMPLES_PER_CONDITION = 30
 
 
-def cache_path(people, seed):
-    """Cache file for one training population; hyperparameters are in the key."""
+def cache_path(people, seed, conditions=None):
+    """Cache file for one training population; hyperparameters are in the key.
+
+    ``conditions`` is given only for a subset of the changed conditions, so the
+    files of the default (all three conditions) keep their names.
+    """
 
     settings = (BLOCK, COMPONENTS, LATENT, HIDDEN, EPOCHS, BATCH, LEARNING_RATE, BETA,
                 SAMPLES_PER_CONDITION)
     key = f"{','.join(sorted(people))}|{seed}|{settings}"
+    if conditions is not None:
+        key += "|" + ",".join(conditions)
     return CACHE_DIR / f"{hashlib.sha1(key.encode()).hexdigest()[:16]}.npy"
 
 
